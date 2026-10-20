@@ -137,6 +137,8 @@ class PhaseThreeSafetyTests(TestCase):
             self.assertIn("no_travel_miles", route)
             self.assertIn("geojson_geometry", route)
             self.assertGreaterEqual(len(route["checkpoints"]), 2)
+        self.assertEqual(len(response["weather_frames"]["wind"]), 7)
+        self.assertNotEqual(response["weather_frames"]["wind"][0]["valid_at"], response["weather_frames"]["wind"][1]["valid_at"])
 
 
 class WeatherProviderTests(TestCase):

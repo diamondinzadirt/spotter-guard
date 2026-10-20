@@ -36,3 +36,7 @@ python manage.py runserver
 ```
 
 See `docs/API_CONTRACT.md` for the shared request/response contract and exact risk rules.
+
+## Connected local demo
+
+Run Django from `backend/` and Vite from `frontend/`. Copy `frontend/.env.example` to `frontend/.env` so the browser calls Django at `http://127.0.0.1:8000`. The backend remains in safe demo mode by default and makes no HERE requests.

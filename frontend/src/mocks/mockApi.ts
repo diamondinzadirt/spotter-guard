@@ -36,17 +36,17 @@ export const mockPlanRoutes = async (request: RoutePlanRequest): Promise<RoutePl
     routes: [
       {
         id: 'i70-central', name: 'I-70 Central', description: 'Direct interstate run across the central Kansas plains.', distance_miles: 571, duration_minutes: 562, arrival_time: '2026-10-19T23:21:00-06:00', overall_risk: 'severe', severe_miles: 75, high_miles: 84, average_risk: 1.83, recommended: true,
-        geometry: [{ x: 15, y: 67 }, { x: 26, y: 59 }, { x: 38, y: 55 }, { x: 49, y: 48 }, { x: 61, y: 43 }, { x: 72, y: 34 }, { x: 87, y: 28 }],
+        no_travel_miles: 0, geometry: [{ x: 15, y: 67 }, { x: 26, y: 59 }, { x: 38, y: 55 }, { x: 49, y: 48 }, { x: 61, y: 43 }, { x: 72, y: 34 }, { x: 87, y: 28 }],
         checkpoints: makeCheckpoints('severe'), risk_segments: [{ start_mile: 0, end_mile: 75, risk_level: 'severe' }, { start_mile: 75, end_mile: 159, risk_level: 'high' }, { start_mile: 159, end_mile: 280, risk_level: 'moderate' }, { start_mile: 280, end_mile: 571, risk_level: 'low' }],
       },
       {
         id: 'northern-nebraska', name: 'Northern Nebraska', description: 'Longer northern arc via I-76 and I-80 through Nebraska.', distance_miles: 629, duration_minutes: 651, arrival_time: '2026-10-20T00:50:00-06:00', overall_risk: 'no_travel', severe_miles: 53, high_miles: 17, average_risk: 1.74, recommended: false,
-        geometry: [{ x: 15, y: 67 }, { x: 24, y: 48 }, { x: 37, y: 31 }, { x: 51, y: 23 }, { x: 67, y: 24 }, { x: 77, y: 33 }, { x: 87, y: 28 }],
+        no_travel_miles: 53, geometry: [{ x: 15, y: 67 }, { x: 24, y: 48 }, { x: 37, y: 31 }, { x: 51, y: 23 }, { x: 67, y: 24 }, { x: 77, y: 33 }, { x: 87, y: 28 }],
         checkpoints: makeCheckpoints('no_travel'), risk_segments: [{ start_mile: 0, end_mile: 53, risk_level: 'no_travel' }, { start_mile: 53, end_mile: 70, risk_level: 'high' }, { start_mile: 70, end_mile: 230, risk_level: 'moderate' }, { start_mile: 230, end_mile: 629, risk_level: 'low' }],
       },
       {
         id: 'southern-plains', name: 'Southern Plains', description: 'Southern detour via Garden City, Dodge City and Wichita.', distance_miles: 640, duration_minutes: 651, arrival_time: '2026-10-20T00:51:00-06:00', overall_risk: 'severe', severe_miles: 104, high_miles: 84, average_risk: 1.82, recommended: false,
-        geometry: [{ x: 15, y: 67 }, { x: 28, y: 77 }, { x: 42, y: 78 }, { x: 56, y: 72 }, { x: 67, y: 59 }, { x: 78, y: 47 }, { x: 87, y: 28 }],
+        no_travel_miles: 0, geometry: [{ x: 15, y: 67 }, { x: 28, y: 77 }, { x: 42, y: 78 }, { x: 56, y: 72 }, { x: 67, y: 59 }, { x: 78, y: 47 }, { x: 87, y: 28 }],
         checkpoints: makeCheckpoints('severe'), risk_segments: [{ start_mile: 0, end_mile: 104, risk_level: 'severe' }, { start_mile: 104, end_mile: 188, risk_level: 'high' }, { start_mile: 188, end_mile: 340, risk_level: 'moderate' }, { start_mile: 340, end_mile: 640, risk_level: 'low' }],
       },
     ],

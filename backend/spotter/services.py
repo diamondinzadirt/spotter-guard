@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 from .demo import demo_routes
 from .geometry import checkpoints
@@ -23,7 +24,7 @@ def _risk_for_route(route, weather_provider, request):
     for item in route_checkpoints:
         nearest = min(readings, key=lambda reading: abs(reading.mile - item["mile"]))
         risk = classify_risk(RiskReading(nearest.wind_mph, nearest.rainfall_in_hr, nearest.snowfall_in_hr), request["load_weight_lb"])
-        timed.append({**item, "wind_mph": nearest.wind_mph, "rainfall_in_hr": nearest.rainfall_in_hr, "snowfall_in_hr": nearest.snowfall_in_hr, "risk_level": risk.value})
+        timed.append({**item, "id": f"{route.id}-{item['mile']}", "x": item["longitude"], "y": item["latitude"], "wind_mph": nearest.wind_mph, "rainfall_in_hr": nearest.rainfall_in_hr, "snowfall_in_hr": nearest.snowfall_in_hr, "risk_level": risk.value})
     segments = []
     for first, second in zip(timed, timed[1:]):
         segments.append({"start_mile": first["mile"], "end_mile": second["mile"], "risk_level": second["risk_level"]})
@@ -55,11 +56,11 @@ def _weather_frames(route, weather_provider):
     readings = weather_provider.readings(route, route.departure_time)
     frames = {"wind": [], "rain": [], "snow": []}
     for offset in range(7):
-        valid_at = route.departure_time.isoformat()
+        valid_at = (route.departure_time + timedelta(hours=offset * 8)).isoformat()
         for metric in frames:
             points = []
             for reading in readings:
-                value = {"wind": reading.wind_mph / 60, "rain": reading.rainfall_in_hr / 1.0, "snow": reading.snowfall_in_hr / 3.0}[metric]
+                value = {"wind": reading.wind_mph / 60, "rain": reading.rainfall_in_hr / 1.0, "snow": reading.snowfall_in_hr / 3.0}[metric] * (1 + offset * 0.04)
                 points.append({"x": reading.x, "y": reading.y, "intensity": min(1, max(0, value))})
             frames[metric].append({"offset_hours": offset * 8, "valid_at": valid_at, "points": points})
     return frames

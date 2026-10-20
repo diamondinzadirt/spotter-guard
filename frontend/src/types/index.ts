@@ -11,6 +11,8 @@ export interface Checkpoint {
   risk_level: RiskLevel;
   x: number;
   y: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface RiskSegment {
@@ -35,17 +37,23 @@ export interface RouteOption {
   overall_risk: RiskLevel;
   severe_miles: number;
   high_miles: number;
+  no_travel_miles: number;
   average_risk: number;
   recommended: boolean;
   geometry: { x: number; y: number }[];
   checkpoints: Checkpoint[];
   risk_segments: RiskSegment[];
+  departure_time?: string;
+  geojson_geometry?: { type: 'LineString'; coordinates: [number, number][] };
 }
 
 export interface RoutePlanResponse {
   routes: RouteOption[];
   recommended_route_id: string;
   weather_frames: Record<WeatherMetric, WeatherFrame[]>;
+  data_source?: 'demo' | 'live';
+  safe_route_available?: boolean;
+  recommendation_explanation?: string;
 }
 
 export interface RoutePlanRequest {
