@@ -33,3 +33,11 @@ The backend implements the authoritative assessment thresholds with continuous b
 Load rules are limited to the specified wind overrides: wind `>=55` is always no travel; wind `>=45` and `<55` with load `>30,000 lb` is no travel; wind `>=35` and `<45` with load `>40,000 lb` is severe. Equality at 30,000 lb and 40,000 lb does not trigger an override.
 
 When multiple weather dimensions apply, the highest classification is used. Route recommendation remains lexicographic by severe miles, high miles, average risk, then duration. The treatment of no-travel mileage in that ordering was not separately specified; the backend does not invent a new ranking criterion and currently expects no-travel segments to be represented in the existing route risk totals for product confirmation.
+
+## Phase 2 routing status
+
+The backend includes a HERE Routing API v8 truck adapter in `backend/spotter/providers.py`. It requests `transportMode=truck`, the submitted gross weight, departure time, and `alternatives=2` (three total routes including the primary). Address inputs are geocoded through HERE when they are not already `lat,lng` pairs. HERE Flexible Polyline geometry is decoded into timezone-aware route candidates, and `backend/spotter/geometry.py` interpolates interval checkpoints using cumulative geometry distance and route duration.
+
+The existing plan response also requires weather-derived risk fields. Because live weather integration remains out of scope, the API continues to return a provider configuration error instead of presenting routing-only results as complete risk-aware plans. The next provider integration must supply route-time weather readings before this endpoint can safely emit the full response.
+
+Provider requirements: set `HERE_API_KEY` in the backend environment and keep it out of Git. HERE account plan, request quotas, truck-routing availability, geocoding charges, and alternative-route limits must be confirmed against the active HERE agreement before production deployment; this repository does not assume a free tier or fixed pricing.

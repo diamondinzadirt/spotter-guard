@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from .errors import error_response
 from .serializers import RoutePlanRequestSerializer
 from .services import RoutePlanningService
-from .providers import ProviderNotConfigured
+from .providers import ProviderError, ProviderNotConfigured
 
 
 class RoutePlanView(APIView):
@@ -16,4 +16,6 @@ class RoutePlanView(APIView):
             response = RoutePlanningService().plan(serializer.validated_data)
         except ProviderNotConfigured as error:
             return error_response("provider_not_configured", str(error), status.HTTP_503_SERVICE_UNAVAILABLE)
+        except ProviderError as error:
+            return error_response("provider_request_failed", str(error), status.HTTP_502_BAD_GATEWAY)
         return response

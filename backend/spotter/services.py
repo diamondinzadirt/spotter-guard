@@ -1,4 +1,4 @@
-from .providers import ProviderNotConfigured, UnconfiguredRoutingProvider, UnconfiguredWeatherProvider
+from .providers import ProviderError, ProviderNotConfigured, UnconfiguredRoutingProvider, UnconfiguredWeatherProvider
 
 
 class RoutePlanningService:
@@ -7,7 +7,9 @@ class RoutePlanningService:
         self.weather_provider = weather_provider or UnconfiguredWeatherProvider()
 
     def plan(self, request):
-        candidates = self.routing_provider.candidates(request["origin"], request["destination"], request["departure_time"])
-        if not candidates:
-            raise ProviderNotConfigured("The routing provider returned no candidates")
-        raise ProviderNotConfigured("Route response assembly is waiting for the weather provider integration")
+        candidates = self.routing_provider.candidates(
+            request["origin"], request["destination"], request["departure_time"], request["load_weight_lb"]
+        )
+        if len(candidates) < 3:
+            raise ProviderError(f"Only {len(candidates)} valid truck routes are available; 3 were requested")
+        raise ProviderNotConfigured("Weather provider is required to assemble the existing risk-aware response contract")

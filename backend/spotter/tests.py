@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
+from unittest.mock import MagicMock, Mock
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from .providers import ProviderNotConfigured
+from .geometry import checkpoints, enrich_geometry
+from .providers import ProviderRequestError, RouteCandidate, RoutePoint, HereRoutingProvider, ProviderNotConfigured
 from .risk import RiskLevel, RiskReading, classify_risk, recommendation_key
 
 
@@ -59,3 +61,58 @@ class RoutePlanApiTests(TestCase):
         }, format="json")
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["error"]["code"], "provider_not_configured")
+
+
+class GeometryTests(TestCase):
+    def setUp(self):
+        self.route = RouteCandidate(
+            id="route-1", name="Test", description="Test", distance_miles=0, duration_minutes=60,
+            departure_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            arrival_time=datetime(2026, 1, 1, 1, tzinfo=timezone.utc),
+            geometry=(RoutePoint(0, 0, 0, 0), RoutePoint(0, 1, 0, 0)),
+        )
+
+    def test_interpolation_and_eta_are_monotonic(self):
+        enriched = enrich_geometry(self.route.geometry, 3600)
+        self.assertGreater(enriched[-1].cumulative_miles, 60)
+        generated = checkpoints(self.route, 25)
+        self.assertEqual(generated[0]["mile"], 0)
+        self.assertEqual(generated[-1]["mile"], enriched[-1].cumulative_miles)
+        self.assertEqual(generated[1]["longitude"], 25 / enriched[-1].cumulative_miles)
+        self.assertLess(generated[1]["arrival_time"], generated[-1]["arrival_time"])
+
+    def test_intervals_and_short_routes(self):
+        self.assertEqual([item["mile"] for item in checkpoints(self.route, 50)][1:-1], [50])
+        short = RouteCandidate(**{**self.route.__dict__, "geometry": (RoutePoint(0, 0, 0, 0), RoutePoint(0, 0.001, 0, 0))})
+        self.assertEqual(len(checkpoints(short, 50)), 2)
+
+
+class HereProviderTests(TestCase):
+    def test_provider_parses_three_alternatives_and_truck_parameters(self):
+        # Encoded fixture is a valid two-point HERE flexible polyline.
+        payload = {"routes": [{"sections": [{"summary": {"length": 160934.4, "duration": 3600}, "polyline": "BAAAU"}]} for _ in range(3)]}
+        response = MagicMock()
+        response.read.return_value = __import__("json").dumps(payload).encode()
+        response.__enter__.return_value = response
+        provider = HereRoutingProvider(api_key="secret", opener=Mock(return_value=response))
+        routes = provider.candidates("39.7,-104.9", "39.1,-94.6", datetime(2026, 1, 1, tzinfo=timezone.utc), 42_000)
+        self.assertEqual(len(routes), 3)
+        request_url = provider.opener.call_args.args[0].full_url
+        self.assertIn("transportMode=truck", request_url)
+        self.assertIn("alternatives=2", request_url)
+        self.assertIn("truck%5BgrossWeight%5D=19051", request_url)
+
+    def test_provider_reports_insufficient_alternatives(self):
+        response = MagicMock()
+        response.read.return_value = __import__("json").dumps({"routes": []}).encode()
+        response.__enter__.return_value = response
+        provider = HereRoutingProvider(api_key="secret", opener=Mock(return_value=response))
+        with self.assertRaises(ProviderRequestError):
+            provider.candidates("39.7,-104.9", "39.1,-94.6", datetime(2026, 1, 1, tzinfo=timezone.utc), 42_000)
+
+    def test_provider_timeout_is_reported(self):
+        def timeout(*args, **kwargs):
+            raise TimeoutError("timed out")
+        provider = HereRoutingProvider(api_key="secret", opener=timeout)
+        with self.assertRaises(ProviderRequestError):
+            provider.candidates("39.7,-104.9", "39.1,-94.6", datetime(2026, 1, 1, tzinfo=timezone.utc), 42_000)
