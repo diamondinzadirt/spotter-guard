@@ -41,3 +41,11 @@ The backend includes a HERE Routing API v8 truck adapter in `backend/spotter/pro
 The existing plan response also requires weather-derived risk fields. Because live weather integration remains out of scope, the API continues to return a provider configuration error instead of presenting routing-only results as complete risk-aware plans. The next provider integration must supply route-time weather readings before this endpoint can safely emit the full response.
 
 Provider requirements: set `HERE_API_KEY` in the backend environment and keep it out of Git. HERE account plan, request quotas, truck-routing availability, geocoding charges, and alternative-route limits must be confirmed against the active HERE agreement before production deployment; this repository does not assume a free tier or fixed pricing.
+
+## Phase 3 weather and demo mode
+
+The safe default is `SPOTTER_ROUTE_MODE=demo` with `HERE_LIVE_ENABLED=false`. Demo mode uses saved truck-route fixtures and offline weather fixtures; its response includes `data_source: "demo"`. No HERE request is made in this mode, even when `HERE_API_KEY` is present. Live mode requires deliberate configuration of both `SPOTTER_ROUTE_MODE=live` and `HERE_LIVE_ENABLED=true`, and uses HERE routing plus Open-Meteo forecast data with `data_source: "live"`.
+
+Open-Meteo hourly forecast values are selected by nearest UTC hour to each checkpoint arrival. Wind is requested in mph; Open-Meteo rainfall millimeters are converted to inches per hour by dividing by 25.4, and snowfall centimeters are converted to inches per hour by dividing by 2.54. Forecast failures are surfaced as provider errors. Weather and route source are never silently represented as demo or live data.
+
+Each route now returns `no_travel_miles`, `geojson_geometry`, and `safe_route_available` at response level. Recommendation still follows severe miles, high miles, average risk, then duration. No-travel segments are flagged separately because the assessment does not define how they alter that ranking. If every route has no-travel mileage, `safe_route_available` is false and the selected route must not be described as safe.

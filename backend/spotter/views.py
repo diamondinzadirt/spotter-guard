@@ -1,4 +1,5 @@
 from rest_framework import status
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .errors import error_response
@@ -18,4 +19,4 @@ class RoutePlanView(APIView):
             return error_response("provider_not_configured", str(error), status.HTTP_503_SERVICE_UNAVAILABLE)
         except ProviderError as error:
             return error_response("provider_request_failed", str(error), status.HTTP_502_BAD_GATEWAY)
-        return response
+        return Response(response, status=status.HTTP_200_OK)

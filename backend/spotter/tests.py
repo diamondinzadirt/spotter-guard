@@ -1,11 +1,15 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, Mock
+import json
+import os
+from unittest.mock import MagicMock, Mock, patch
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from .geometry import checkpoints, enrich_geometry
 from .providers import ProviderRequestError, RouteCandidate, RoutePoint, HereRoutingProvider, ProviderNotConfigured
+from .services import RoutePlanningService
+from .weather import OpenMeteoWeatherProvider, weather_provider_for_mode
 from .risk import RiskLevel, RiskReading, classify_risk, recommendation_key
 
 
@@ -53,14 +57,17 @@ class RoutePlanApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"]["code"], "invalid_request")
 
-    def test_valid_payload_does_not_fabricate_provider_data(self):
+    def test_valid_payload_returns_offline_demo_response(self):
         response = APIClient().post("/api/routes/plan", {
             "origin": "Denver, CO", "destination": "Kansas City, MO",
             "departure_time": datetime(2026, 10, 19, 20, tzinfo=timezone.utc).isoformat(),
             "load_weight_lb": 42_000, "checkpoint_interval_miles": 25,
         }, format="json")
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["error"]["code"], "provider_not_configured")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["data_source"], "demo")
+        self.assertEqual(len(payload["routes"]), 3)
+        self.assertIn("safe_route_available", payload)
 
 
 class GeometryTests(TestCase):
@@ -109,6 +116,48 @@ class HereProviderTests(TestCase):
         provider = HereRoutingProvider(api_key="secret", opener=Mock(return_value=response))
         with self.assertRaises(ProviderRequestError):
             provider.candidates("39.7,-104.9", "39.1,-94.6", datetime(2026, 1, 1, tzinfo=timezone.utc), 42_000)
+
+
+class PhaseThreeSafetyTests(TestCase):
+    def test_live_weather_requires_explicit_enablement(self):
+        with self.assertRaises(ProviderNotConfigured):
+            weather_provider_for_mode("live", False)
+
+    def test_live_here_is_disabled_even_when_key_exists(self):
+        request = {"origin": "Denver, CO", "destination": "Kansas City, MO", "departure_time": datetime(2026, 1, 1, tzinfo=timezone.utc), "load_weight_lb": 42_000, "checkpoint_interval_miles": 25}
+        with patch.dict(os.environ, {"SPOTTER_ROUTE_MODE": "live", "HERE_LIVE_ENABLED": "false", "HERE_API_KEY": "configured"}):
+            with self.assertRaises(ProviderNotConfigured):
+                RoutePlanningService().plan(request)
+
+    def test_demo_plan_contains_risk_mileage_and_source(self):
+        request = {"origin": "Denver, CO", "destination": "Kansas City, MO", "departure_time": datetime(2026, 1, 1, tzinfo=timezone.utc), "load_weight_lb": 42_000, "checkpoint_interval_miles": 10}
+        response = RoutePlanningService(mode="demo").plan(request)
+        self.assertEqual(response["data_source"], "demo")
+        for route in response["routes"]:
+            self.assertIn("no_travel_miles", route)
+            self.assertIn("geojson_geometry", route)
+            self.assertGreaterEqual(len(route["checkpoints"]), 2)
+
+
+class WeatherProviderTests(TestCase):
+    def test_open_meteo_converts_mm_and_cm_to_inches_and_selects_hour(self):
+        payload = {"hourly": {"time": ["2026-01-01T12:00", "2026-01-01T13:00"], "wind_speed_10m": [25, 30], "rain": [2.54, 5.08], "snowfall": [2.54, 5.08]}}
+        response = MagicMock()
+        response.read.return_value = json.dumps(payload).encode()
+        response.__enter__.return_value = response
+        route = RouteCandidate("r", "r", "r", 10, 60, datetime(2026, 1, 1, 12, 40, tzinfo=timezone.utc), datetime(2026, 1, 1, 13, 40, tzinfo=timezone.utc), (RoutePoint(39, -105, 0, 0), RoutePoint(39, -104, 10, 1800)))
+        readings = OpenMeteoWeatherProvider(opener=Mock(return_value=response)).readings(route, route.departure_time)
+        self.assertEqual(readings[0].wind_mph, 30)
+        self.assertAlmostEqual(readings[0].rainfall_in_hr, 0.2)
+        self.assertAlmostEqual(readings[0].snowfall_in_hr, 2.0)
+
+    def test_malformed_forecast_is_rejected(self):
+        response = MagicMock()
+        response.read.return_value = b'{"hourly": {}}'
+        response.__enter__.return_value = response
+        route = RouteCandidate("r", "r", "r", 10, 60, datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 1, 1, tzinfo=timezone.utc), (RoutePoint(39, -105, 0, 0), RoutePoint(39, -104, 10, 1800)))
+        with self.assertRaises(ProviderRequestError):
+            OpenMeteoWeatherProvider(opener=Mock(return_value=response)).readings(route, route.departure_time)
 
     def test_provider_timeout_is_reported(self):
         def timeout(*args, **kwargs):

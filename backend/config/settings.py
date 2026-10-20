@@ -32,6 +32,8 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = [origin for origin in os.getenv("SPOTTER_CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if origin]
+HERE_LIVE_ENABLED = os.getenv("HERE_LIVE_ENABLED", "false").lower() == "true"
+SPOTTER_ROUTE_MODE = os.getenv("SPOTTER_ROUTE_MODE", "demo").lower()
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
