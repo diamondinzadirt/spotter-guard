@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from .geometry import checkpoints, enrich_geometry
 from .providers import ProviderRequestError, RouteCandidate, RoutePoint, HereRoutingProvider, ProviderNotConfigured
-from .services import RoutePlanningService
+from .services import RoutePlanningService, _weather_frames
 from .weather import OpenMeteoWeatherProvider, weather_provider_for_mode
 from .risk import RiskLevel, RiskReading, classify_risk, recommendation_key
 
@@ -68,6 +68,19 @@ class RoutePlanApiTests(TestCase):
         self.assertEqual(payload["data_source"], "demo")
         self.assertEqual(len(payload["routes"]), 3)
         self.assertIn("safe_route_available", payload)
+
+    def test_demo_weather_frames_vary_by_metric_location_and_time(self):
+        response = APIClient().post("/api/routes/plan", {
+            "origin": "Denver, CO", "destination": "Kansas City, MO",
+            "departure_time": datetime(2026, 10, 19, 20, tzinfo=timezone.utc).isoformat(),
+            "load_weight_lb": 42_000, "checkpoint_interval_miles": 25,
+        }, format="json")
+        payload = response.json()
+        for metric in ("wind", "rain", "snow"):
+            frames = payload["weather_frames"][metric]
+            self.assertEqual(len(frames), 7)
+            self.assertNotEqual(frames[0]["points"], frames[3]["points"])
+            self.assertGreater(len({(point["x"], point["y"]) for point in frames[0]["points"]}), 1)
 
 
 class GeometryTests(TestCase):

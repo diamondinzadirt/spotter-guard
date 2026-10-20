@@ -1,4 +1,5 @@
 import os
+import math
 from datetime import timedelta
 
 from .demo import demo_routes
@@ -60,8 +61,11 @@ def _weather_frames(route, weather_provider):
         for metric in frames:
             points = []
             for reading in readings:
-                value = {"wind": reading.wind_mph / 60, "rain": reading.rainfall_in_hr / 1.0, "snow": reading.snowfall_in_hr / 3.0}[metric] * (1 + offset * 0.04)
-                points.append({"x": reading.x, "y": reading.y, "intensity": min(1, max(0, value))})
+                base = {"wind": reading.wind_mph / 60, "rain": reading.rainfall_in_hr / 1.0, "snow": reading.snowfall_in_hr / 3.0}[metric]
+                spatial_variation = 1 + 0.22 * math.sin(reading.x * 3 + reading.y * 2 + offset)
+                time_variation = 1 + 0.12 * math.sin(offset * 1.7 + reading.mile / 90)
+                value = base * spatial_variation * time_variation
+                points.append({"x": reading.x, "y": reading.y, "intensity": min(1, max(0, value)), "value": round({"wind": reading.wind_mph, "rain": reading.rainfall_in_hr, "snow": reading.snowfall_in_hr}[metric], 3), "unit": "mph" if metric == "wind" else "in/hr"})
             frames[metric].append({"offset_hours": offset * 8, "valid_at": valid_at, "points": points})
     return frames
 

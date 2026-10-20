@@ -24,7 +24,7 @@ export interface RiskSegment {
 export interface WeatherFrame {
   offset_hours: number;
   valid_at: string;
-  points: { x: number; y: number; intensity: number }[];
+  points: { x: number; y: number; intensity: number; value?: number; unit?: string }[];
 }
 
 export interface RouteOption {

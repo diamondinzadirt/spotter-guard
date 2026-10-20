@@ -25,6 +25,8 @@ const frames = (metric: 'wind' | 'rain' | 'snow') =>
       x: 11 + (index % 11) * 7.5,
       y: 25 + Math.floor(index / 11) * 22 + Math.sin(index * 2.4 + frameIndex) * 5,
       intensity: Math.min(1, Math.max(0.12, (metric === 'wind' ? 0.32 : metric === 'rain' ? 0.22 : 0.14) + frameIndex * 0.07 + Math.sin(index + frameIndex) * 0.12)),
+      value: Math.round(((metric === 'wind' ? 18 : metric === 'rain' ? 0.08 : 0.2) + frameIndex * (metric === 'wind' ? 2.4 : metric === 'rain' ? 0.035 : 0.18) + Math.sin(index + frameIndex) * (metric === 'wind' ? 4 : 0.04)) * 100) / 100,
+      unit: metric === 'wind' ? 'mph' : 'in/hr',
     })),
   }));
 
