@@ -1,35 +1,38 @@
 # Spotter Guard
 
-A frontend-only assessment demo for weather-aware commercial truck routing.
+Spotter Guard is a full-stack assessment demo for weather-aware commercial truck routing.
 
 Developed and maintained by [John Tasie](https://tasie.vercel.app).
 
-- Email: [tasiejohn777@gmail.com](mailto:tasiejohn777@gmail.com)
-- GitHub: [diamondinzadirt](https://github.com/diamondinzadirt)
-- Portfolio: [tasie.vercel.app](https://tasie.vercel.app)
+## Repository structure
 
-## Run locally
+- `frontend/` — Vite, React, TypeScript, Tailwind, mock adapters, and UI.
+- `backend/` — Django REST Framework foundation and risk engine.
+- `docs/` — API contract and assessment documentation.
+
+## Frontend
 
 Requires Node.js 18 or newer.
 
 ```sh
+cd frontend
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. Create a production build with `npm run build`, or preview one with `npm run preview`.
+Use `npm run lint`, `npm run typecheck`, and `npm run build` from `frontend/` to validate the application.
 
-## Included
+## Backend
 
-- Responsive desktop control center with route planner, map, route comparison, weather, and checkpoints.
-- Mobile Map, Routes, Weather, and Plan views with persistent selected route and forecast state.
-- Denver to Kansas City demo routes with selectable paths, checkpoints, risk levels, and a 0–48 hour weather slider.
-- Typed mock service contract ready for Django integration.
+The backend does not fabricate live routing or weather results. It validates `POST /api/routes/plan` and returns a provider configuration error until real providers are added.
 
-## Integration
+```sh
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py test
+python manage.py runserver
+```
 
-The demo intentionally shows `Assessment Demo — Live Routing Not Connected`. Replace the mock `planRoutes` adapter with a typed HTTP adapter pointed at `VITE_API_BASE_URL`. The canonical request and response shape is documented in `docs/API_CONTRACT.md`.
-
-No authentication, database, routing API, weather API, or authoritative risk calculation is included in this frontend build.
-
-The application runs independently using Vite directly. The current interface uses the local mock service; a future Django integration can use `VITE_API_BASE_URL` as described above.
+See `docs/API_CONTRACT.md` for the shared request/response contract and exact risk rules.

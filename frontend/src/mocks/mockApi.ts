@@ -53,5 +53,3 @@ export const mockPlanRoutes = async (request: RoutePlanRequest): Promise<RoutePl
     weather_frames: { wind: frames('wind'), rain: frames('rain'), snow: frames('snow') },
   };
 };
-
-export const planRoutes = mockPlanRoutes;
