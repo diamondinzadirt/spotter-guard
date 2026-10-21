@@ -24,7 +24,7 @@ Use `npm run lint`, `npm run typecheck`, and `npm run build` from `frontend/` to
 
 ## Backend
 
-The backend does not fabricate live routing or weather results. It validates `POST /api/routes/plan` and returns a provider configuration error until real providers are added.
+The backend has a safe offline demo provider and a separately gated HERE/Open-Meteo live provider. Demo mode returns clearly labeled saved route and weather fixtures; live mode requires explicit provider configuration.
 
 ```sh
 cd backend

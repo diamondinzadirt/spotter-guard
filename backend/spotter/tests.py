@@ -121,6 +121,31 @@ class RoutePlanApiTests(TestCase):
             self.assertNotEqual([point["value"] for point in frames[0]["points"]], [point["value"] for point in frames[3]["points"]])
             self.assertGreater(len({(point["x"], point["y"]) for point in frames[0]["points"]}), 1)
 
+    def test_live_candidates_are_enriched_before_weather_sampling(self):
+        route = RouteCandidate(
+            "live", "Live", "Test", 60, 60,
+            datetime(2026, 1, 1, tzinfo=timezone.utc), datetime(2026, 1, 1, 1, tzinfo=timezone.utc),
+            (RoutePoint(39, -105, 0, 0), RoutePoint(39, -104, 0, 0)),
+        )
+        captured = []
+
+        class Routing:
+            def candidates(self, *args):
+                return [route, route, route]
+
+        class Weather:
+            def readings(self, candidate, departure_time):
+                captured.append(candidate.geometry)
+                return [WeatherReading(departure_time, 0, 10, 0, 0, -105, 39), WeatherReading(departure_time, 60, 10, 0, 0, -104, 39)]
+
+        RoutePlanningService(mode="live", live_enabled=True, routing_provider=Routing(), weather_provider=Weather()).plan({
+            "origin": "39,-105", "destination": "39,-104", "departure_time": route.departure_time,
+            "load_weight_lb": 20_000, "checkpoint_interval_miles": 25,
+        })
+        self.assertTrue(captured)
+        self.assertGreater(captured[0][-1].cumulative_miles, 0)
+        self.assertGreater(captured[0][-1].cumulative_seconds, 0)
+
 
 class GeometryTests(TestCase):
     def setUp(self):
@@ -204,6 +229,17 @@ class WeatherProviderTests(TestCase):
         self.assertEqual(readings[0].wind_mph, 30)
         self.assertAlmostEqual(readings[0].rainfall_in_hr, 0.2)
         self.assertAlmostEqual(readings[0].snowfall_in_hr, 2.0)
+
+    def test_open_meteo_forecast_frames_select_distinct_hours(self):
+        payload = {"hourly": {"time": ["2026-01-01T12:00", "2026-01-01T13:00"], "wind_speed_10m": [25, 40], "rain": [2.54, 7.62], "snowfall": [2.54, 5.08]}}
+        response = MagicMock()
+        response.read.return_value = json.dumps(payload).encode()
+        response.__enter__.return_value = response
+        route = RouteCandidate("r", "r", "r", 10, 60, datetime(2026, 1, 1, 12, tzinfo=timezone.utc), datetime(2026, 1, 1, 13, tzinfo=timezone.utc), (RoutePoint(39, -105, 0, 0), RoutePoint(39, -104, 10, 1800)))
+        frames = OpenMeteoWeatherProvider(opener=Mock(return_value=response)).forecast_readings(route, [0, 1])
+        self.assertEqual(frames[0][0].wind_mph, 25)
+        self.assertEqual(frames[1][0].wind_mph, 40)
+        self.assertNotEqual(frames[0][0].valid_at, frames[1][0].valid_at)
 
     def test_malformed_forecast_is_rejected(self):
         response = MagicMock()

@@ -20,11 +20,11 @@ All fields use snake_case. `departure_time` is a timezone-aware ISO 8601 timesta
 
 The response is a `RoutePlanResponse` with `routes`, `recommended_route_id`, and time-indexed `weather_frames`. Each route includes a GeoJSON-ready route geometry, arrival ETA, checkpoint readings, risk segments, severe/high mileage totals, average risk, and overall risk. Risk values are `low`, `moderate`, `high`, `severe`, or `no_travel`.
 
-The frontend currently uses the mock adapter behind the same service boundary. Set `VITE_API_BASE_URL` to connect the future Django API; the HTTP adapter can replace `planRoutes` without changing views.
+The frontend uses the HTTP adapter at `frontend/src/services/mockApi.ts`. Set `VITE_API_BASE_URL` to connect Django; demo mode is selected by the backend environment and returns `data_source: "demo"`.
 
 ## Phase 1 backend status
 
-The Django foundation validates this request shape at `POST /api/routes/plan`. Until real routing and weather providers are configured, a valid request returns HTTP `503` with `{ "error": { "code": "provider_not_configured", "message": "..." } }`; it never presents fabricated weather or route data as live results.
+The Django endpoint validates this request shape at `POST /api/routes/plan`. In safe demo mode it returns saved, clearly labeled fixtures. In live mode, missing or disabled providers return an error; the API never presents demo data as live results.
 
 ## Risk implementation interpretation
 
@@ -38,7 +38,7 @@ When multiple weather dimensions apply, the highest classification is used. Rout
 
 The backend includes a HERE Routing API v8 truck adapter in `backend/spotter/providers.py`. It requests `transportMode=truck`, the submitted gross weight, departure time, and `alternatives=2` (three total routes including the primary). Address inputs are geocoded through HERE when they are not already `lat,lng` pairs. HERE Flexible Polyline geometry is decoded into timezone-aware route candidates, and `backend/spotter/geometry.py` interpolates interval checkpoints using cumulative geometry distance and route duration.
 
-The existing plan response also requires weather-derived risk fields. Because live weather integration remains out of scope, the API continues to return a provider configuration error instead of presenting routing-only results as complete risk-aware plans. The next provider integration must supply route-time weather readings before this endpoint can safely emit the full response.
+Live plans use enriched route geometry to estimate cumulative travel time at each checkpoint. The Open-Meteo adapter selects hourly measurements at those checkpoint/forecast target times and surfaces incomplete or failed provider responses.
 
 Provider requirements: set `HERE_API_KEY` in the backend environment and keep it out of Git. HERE account plan, request quotas, truck-routing availability, geocoding charges, and alternative-route limits must be confirmed against the active HERE agreement before production deployment; this repository does not assume a free tier or fixed pricing.
 
@@ -48,4 +48,4 @@ The safe default is `SPOTTER_ROUTE_MODE=demo` with `HERE_LIVE_ENABLED=false`. De
 
 Open-Meteo hourly forecast values are selected by nearest UTC hour to each checkpoint arrival. Wind is requested in mph; Open-Meteo rainfall millimeters are converted to inches per hour by dividing by 25.4, and snowfall centimeters are converted to inches per hour by dividing by 2.54. Forecast failures are surfaced as provider errors. Weather and route source are never silently represented as demo or live data.
 
-Each route now returns `no_travel_miles`, `geojson_geometry`, and `safe_route_available` at response level. Recommendation still follows severe miles, high miles, average risk, then duration. No-travel segments are flagged separately because the assessment does not define how they alter that ranking. If every route has no-travel mileage, `safe_route_available` is false and the selected route must not be described as safe.
+Each route now returns `no_travel_miles`, `geojson_geometry`, and `safe_route_available` at response level. Recommendation still follows severe miles, high miles, average risk, then duration. No-travel segments are flagged separately because the assessment does not define how they alter that ranking. If every route has no-travel mileage, `safe_route_available` is false and the selected route must not be described as safe. Demo mode uses the saved Denver–Kansas City corridor and does not claim to route arbitrary entered locations.

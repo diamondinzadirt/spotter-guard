@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -52,13 +52,13 @@ class OpenMeteoWeatherProvider:
             raise ProviderRequestError(f"Open-Meteo request failed: {error}") from error
 
     def readings(self, route: RouteCandidate, departure_time: datetime) -> list[WeatherReading]:
-        result = []
-        cache = {}
+        return self.forecast_readings(route, [0])[0]
+
+    def forecast_readings(self, route: RouteCandidate, offsets: list[int]) -> list[list[WeatherReading]]:
+        frames = [[] for _ in offsets]
         for point in route.geometry:
-            cache_key = (round(point.latitude, 5), round(point.longitude, 5))
-            if cache_key not in cache:
-                cache[cache_key] = self._request(point.latitude, point.longitude, [route.departure_time])
-            data = cache[cache_key]
+            targets = [route.departure_time + timedelta(seconds=point.cumulative_seconds, hours=offset) for offset in offsets]
+            data = self._request(point.latitude, point.longitude, targets)
             hourly = data.get("hourly", {})
             times = hourly.get("time", [])
             wind = hourly.get("wind_speed_10m", [])
@@ -66,14 +66,14 @@ class OpenMeteoWeatherProvider:
             snow = hourly.get("snowfall", [])
             if not times or not (len(times) == len(wind) == len(rain) == len(snow)):
                 raise ProviderRequestError("Open-Meteo returned an incomplete hourly forecast")
-            target = point.cumulative_seconds
-            index = min(range(len(times)), key=lambda item: abs(datetime.fromisoformat(times[item]).replace(tzinfo=timezone.utc).timestamp() - (route.departure_time.timestamp() + target)))
-            result.append(WeatherReading(
-                valid_at=datetime.fromisoformat(times[index]).replace(tzinfo=timezone.utc), mile=point.cumulative_miles,
-                wind_mph=float(wind[index]), rainfall_in_hr=float(rain[index]) / 25.4, snowfall_in_hr=float(snow[index]) / 2.54,
-                x=point.longitude, y=point.latitude,
-            ))
-        return result
+            for frame_index, target in enumerate(targets):
+                index = min(range(len(times)), key=lambda item: abs(datetime.fromisoformat(times[item]).replace(tzinfo=timezone.utc).timestamp() - target.timestamp()))
+                frames[frame_index].append(WeatherReading(
+                    valid_at=datetime.fromisoformat(times[index]).replace(tzinfo=timezone.utc), mile=point.cumulative_miles,
+                    wind_mph=float(wind[index]), rainfall_in_hr=float(rain[index]) / 25.4, snowfall_in_hr=float(snow[index]) / 2.54,
+                    x=point.longitude, y=point.latitude,
+                ))
+        return frames
 
 
 def weather_provider_for_mode(mode: str, live_enabled: bool):
