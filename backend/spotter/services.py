@@ -65,7 +65,8 @@ def _weather_frames(route, weather_provider):
                 spatial_variation = 1 + 0.22 * math.sin(reading.x * 3 + reading.y * 2 + offset)
                 time_variation = 1 + 0.12 * math.sin(offset * 1.7 + reading.mile / 90)
                 value = base * spatial_variation * time_variation
-                points.append({"x": reading.x, "y": reading.y, "intensity": min(1, max(0, value)), "value": round({"wind": reading.wind_mph, "rain": reading.rainfall_in_hr, "snow": reading.snowfall_in_hr}[metric], 3), "unit": "mph" if metric == "wind" else "in/hr"})
+                measurement = {"wind": reading.wind_mph, "rain": reading.rainfall_in_hr, "snow": reading.snowfall_in_hr}[metric] * spatial_variation * time_variation
+                points.append({"x": reading.x, "y": reading.y, "intensity": min(1, max(0, value)), "value": round(measurement, 3), "unit": "mph" if metric == "wind" else "in/hr"})
             frames[metric].append({"offset_hours": offset * 8, "valid_at": valid_at, "points": points})
     return frames
 

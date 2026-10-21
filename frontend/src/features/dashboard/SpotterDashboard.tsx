@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, ArrowRight, BarChart3, CloudRain, Gauge, Menu, Navigation, Radio, Route, Send, ShieldCheck, Snowflake, Truck, Wind } from 'lucide-react';
+import { Activity, ArrowRight, BarChart3, CloudRain, Gauge, Navigation, Radio, Route, Send, ShieldCheck, Snowflake, Truck, Wind } from 'lucide-react';
 import type { Checkpoint, RiskLevel, RouteOption, RoutePlanRequest, RoutePlanResponse, WeatherMetric } from '@/types';
 import { planRoutes } from '@/services/mockApi';
 import MapCanvas from './MapCanvas';
@@ -14,6 +14,14 @@ const riskMeta: Record<RiskLevel, { label: string; color: string; bg: string }> 
 
 const formatTime = (iso: string) => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
 const formatDuration = (minutes: number) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+const weatherSeverity = (metric: WeatherMetric, value: number) => {
+  const thresholds = metric === 'wind' ? [25, 35, 45, 55] : metric === 'rain' ? [0.1, 0.25, 0.5, 1] : [0.5, 1, 2, 3];
+  if (value >= thresholds[3]) return 'No Travel';
+  if (value >= thresholds[2]) return 'Severe';
+  if (value >= thresholds[1]) return 'High';
+  if (value >= thresholds[0]) return 'Moderate';
+  return 'Low';
+};
 
 function Brand() {
   return <div className="brand"><div className="brand-mark"><img src="/images/spotter-logo.png" alt="Spotter Guard logo" /></div><div><strong>spotter<span> guard</span></strong><small>WEATHER-AWARE ROUTING</small></div></div>;
@@ -58,7 +66,11 @@ function WeatherPanel({ metric, setMetric, slider, setSlider, response }: { metr
   const unit = metric === 'wind' ? 'mph' : 'in/hr';
   const peakPosition = Math.min(100, (peak / maxScale) * 100);
   const averagePosition = Math.min(100, (average / maxScale) * 100);
-  return <div className="weather-panel panel-content"><div className="metric-switcher">{(['wind', 'rain', 'snow'] as WeatherMetric[]).map((item) => { const MetricIcon = icons[item]; return <button key={item} className={metric === item ? 'active' : ''} onClick={() => setMetric(item)}><MetricIcon size={15} />{item}</button>; })}<button><Activity size={15} /></button></div><div className="forecast-card"><div className="forecast-heading"><span className="eyebrow">Forecast / 0–48 h</span><b>+{frame.offset_hours} h</b></div><input type="range" min="0" max="6" value={slider} onChange={(event) => setSlider(Number(event.target.value))} /><div className="forecast-times"><span>Now</span><span>+24h</span><span>+48h</span></div><p>Valid {new Date(frame.valid_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric' })}</p></div><div className="intensity-card"><div className="intensity-title"><Icon size={15} /><span>{metric} intensity</span><b>{unit}</b></div><div className="intensity-scale" aria-label={`${metric} intensity scale from calm to no travel`}><div className="intensity-scale-bar" /><span className="intensity-marker peak" style={{ left: `${peakPosition}%` }} title={`Peak ${peak.toFixed(2)} ${unit}`} /><span className="intensity-marker average" style={{ left: `${averagePosition}%` }} title={`Average ${average.toFixed(2)} ${unit}`} /></div><div className="intensity-labels"><span>Calm</span><span>Moderate</span><span>High</span><span>Severe</span><span>No travel</span></div><div className="intensity-reading"><span><i className="marker-key peak-key" />Peak <b>{peak.toFixed(2)} {unit}</b></span><span><i className="marker-key average-key" />Average <b>{average.toFixed(2)} {unit}</b></span></div></div><p className="weather-note">Simulated forecast intensity at mapped points. This weather-only scale is separate from final load-adjusted route risk.</p></div>;
+  const metricLabel = metric[0].toUpperCase() + metric.slice(1);
+  const peakSeverity = weatherSeverity(metric, peak);
+  const averageSeverity = weatherSeverity(metric, average);
+  const measurement = (value: number) => `${value.toFixed(metric === 'wind' ? 0 : 2)} ${unit}`;
+  return <div className="weather-panel panel-content"><div className="metric-switcher">{(['wind', 'rain', 'snow'] as WeatherMetric[]).map((item) => { const MetricIcon = icons[item]; return <button key={item} className={metric === item ? 'active' : ''} onClick={() => setMetric(item)}><MetricIcon size={15} />{item}</button>; })}<button><Activity size={15} /></button></div><div className="forecast-card"><div className="forecast-heading"><span className="eyebrow">Forecast / 0–48 h</span><b>+{frame.offset_hours} h</b></div><input type="range" min="0" max="6" value={slider} onChange={(event) => setSlider(Number(event.target.value))} /><div className="forecast-times"><span>Now</span><span>+24h</span><span>+48h</span></div><p>Valid {new Date(frame.valid_at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric' })}</p></div><div className="intensity-card"><div className="intensity-title"><Icon size={15} /><span>{metric} intensity</span><b>{unit}</b></div><div className="intensity-scale" aria-label={`${metric} intensity scale from calm to no travel`}><div className="intensity-scale-bar" /><button type="button" className="intensity-marker peak" style={{ left: `${peakPosition}%` }} aria-label={`Peak ${metricLabel}, ${measurement(peak)}, ${peakSeverity}. Strongest ${metric} detected along the route.`}><span className="marker-tooltip"><strong>Peak {metricLabel} · {measurement(peak)}</strong><em>{peakSeverity} — Strongest {metric} detected along the route.</em></span></button><button type="button" className="intensity-marker average" style={{ left: `${averagePosition}%` }} aria-label={`Average ${metricLabel}, ${measurement(average)}, ${averageSeverity}. Typical ${metric} across the route.`}><span className="marker-tooltip"><strong>Average {metricLabel} · {measurement(average)}</strong><em>{averageSeverity} — Typical {metric} across the route.</em></span></button></div><div className="intensity-labels"><span>Calm</span><span>Moderate</span><span>High</span><span>Severe</span><span>No travel</span></div><div className="intensity-reading"><span><i className="marker-key peak-key" />Peak <b>{measurement(peak)}</b></span><span><i className="marker-key average-key" />Average <b>{measurement(average)}</b></span></div></div><p className="weather-note">Simulated forecast intensity at mapped points. This weather-only scale is separate from final load-adjusted route risk.</p></div>;
 }
 
 function CheckpointTable({ route, selectedCheckpoint, onCheckpoint }: { route: RouteOption; selectedCheckpoint?: Checkpoint; onCheckpoint: (checkpoint: Checkpoint) => void }) {
@@ -77,14 +89,14 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
 
-  const analyze = async () => { setLoading(true); setError(undefined); try { const next = await planRoutes(request); setResponse(next); setSelectedRouteId(next.recommended_route_id); setSelectedCheckpoint(undefined); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to analyze this corridor.'); } finally { setLoading(false); } };
+  const analyze = async () => { setLoading(true); setError(undefined); try { const next = await planRoutes(request); setResponse(next); setSelectedRouteId(next.recommended_route_id); setSelectedCheckpoint(undefined); setMobileView('map'); } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to analyze this corridor.'); } finally { setLoading(false); } };
   const data = response ?? null;
   const routes = data?.routes ?? [];
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? routes[0];
   const displayRoutes = routes.length ? routes : [];
 
   return <div className="app-shell">
-    <header className="topbar"><Brand /><div className="trip-summary"><b>{request.origin.split(',')[0]}</b><ArrowRight size={13} /><b>{request.destination.split(',')[0]}</b><span className="summary-divider" />{selectedRoute && <><span>{selectedRoute.distance_miles.toFixed(0)} mi</span><span>{formatDuration(selectedRoute.duration_minutes)}</span><span>ETA {formatTime(selectedRoute.arrival_time)}</span></>}</div><div className="header-actions"><RiskBadge risk={selectedRoute?.overall_risk ?? 'low'} compact /><span className="demo-pill"><Radio size={13} /> {data?.data_source === 'live' ? 'Live forecast' : 'Simulated demo'} <span>{data?.safe_route_available === false ? 'No safe route' : 'Backend connected'}</span></span></div><button className="mobile-menu"><Menu size={20} /></button></header>
+    <header className="topbar"><Brand /><div className="trip-summary"><b>{request.origin.split(',')[0]}</b><ArrowRight size={13} /><b>{request.destination.split(',')[0]}</b><span className="summary-divider" />{selectedRoute && <><span>{selectedRoute.distance_miles.toFixed(0)} mi</span><span>{formatDuration(selectedRoute.duration_minutes)}</span><span>ETA {formatTime(selectedRoute.arrival_time)}</span></>}</div><div className="header-actions"><RiskBadge risk={selectedRoute?.overall_risk ?? 'low'} compact /><span className="demo-pill" title="Routes and forecasts shown are sample data for demonstration. Demo mode uses the saved Denver–Kansas City corridor."><Radio size={13} /> Demo data</span></div></header>
     <div className="mobile-context"><span className="eyebrow">{mobileView === 'map' ? 'active corridor' : mobileView}</span><strong>{request.origin} <ArrowRight size={13} /> {request.destination}</strong></div>
     <main className="workspace">
       <aside className={`left-column ${mobileView === 'plan' ? 'mobile-visible' : ''}`}><Planner request={request} setRequest={setRequest} onAnalyze={analyze} loading={loading} />{error && <div className="error-state" role="alert">{error}</div>}</aside>

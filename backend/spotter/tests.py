@@ -7,8 +7,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from .geometry import checkpoints, enrich_geometry
-from .providers import ProviderRequestError, RouteCandidate, RoutePoint, HereRoutingProvider, ProviderNotConfigured
-from .services import RoutePlanningService, _weather_frames
+from .providers import ProviderRequestError, RouteCandidate, RoutePoint, WeatherReading, HereRoutingProvider, ProviderNotConfigured
+from .services import RoutePlanningService, _risk_for_route, _weather_frames
 from .weather import OpenMeteoWeatherProvider, weather_provider_for_mode
 from .risk import RiskLevel, RiskReading, classify_risk, recommendation_key
 
@@ -36,6 +36,12 @@ class RiskClassificationTests(TestCase):
         self.assertEqual(classify_risk(RiskReading(40, 0, 0), 40_001), RiskLevel.SEVERE)
         self.assertEqual(classify_risk(RiskReading(55, 0, 0), 0), RiskLevel.NO_TRAVEL)
 
+    def test_assessment_load_scenarios_38_48_and_55_mph(self):
+        for load in (20_000, 42_000):
+            self.assertEqual(classify_risk(RiskReading(38, 0, 0), load), RiskLevel.SEVERE if load == 42_000 else RiskLevel.HIGH)
+            self.assertEqual(classify_risk(RiskReading(48, 0, 0), load), RiskLevel.NO_TRAVEL if load == 42_000 else RiskLevel.SEVERE)
+            self.assertEqual(classify_risk(RiskReading(55, 0, 0), load), RiskLevel.NO_TRAVEL)
+
     def test_combined_conditions_use_highest_risk(self):
         self.assertEqual(classify_risk(RiskReading(20, 0.10, 2.00), 0), RiskLevel.SEVERE)
 
@@ -49,6 +55,38 @@ class RecommendationTests(TestCase):
         slower = {"severe_miles": 2, "high_miles": 1, "average_risk": 0.5, "duration_minutes": 1}
         faster = {"severe_miles": 2, "high_miles": 1, "average_risk": 0.5, "duration_minutes": 2}
         self.assertLess(recommendation_key(slower), recommendation_key(faster))
+
+    def test_recommendation_key_checks_each_priority_in_order(self):
+        base = {"severe_miles": 1, "high_miles": 2, "average_risk": 3, "duration_minutes": 4}
+        for field, value in (("severe_miles", 2), ("high_miles", 3), ("average_risk", 4), ("duration_minutes", 5)):
+            changed = {**base, field: value}
+            self.assertLess(recommendation_key(base), recommendation_key(changed))
+
+
+class RouteRiskAggregationTests(TestCase):
+    def setUp(self):
+        self.route = RouteCandidate(
+            id="aggregation", name="Aggregation", description="Test", distance_miles=30, duration_minutes=30,
+            departure_time=datetime(2026, 1, 1, tzinfo=timezone.utc), arrival_time=datetime(2026, 1, 1, 1, tzinfo=timezone.utc),
+            geometry=tuple(RoutePoint(39, -100 + mile / 10, mile, mile * 60) for mile in (0, 10, 20, 30)),
+        )
+
+    def test_checkpoint_risk_and_mileage_totals_are_deterministic(self):
+        readings = [
+            WeatherReading(self.route.departure_time, 0, 48, 0, 0, -100, 39),
+            WeatherReading(self.route.departure_time, 10, 36, 0, 0, -99, 39),
+            WeatherReading(self.route.departure_time, 20, 55, 0, 0, -98, 39),
+            WeatherReading(self.route.departure_time, 30, 0, 0.1, 0, -97, 39),
+        ]
+        class FixedWeather:
+            def readings(self, route, departure_time):
+                return readings
+        result = _risk_for_route(self.route, FixedWeather(), {"checkpoint_interval_miles": 10, "departure_time": self.route.departure_time, "load_weight_lb": 20_000})
+        self.assertEqual([item["risk_level"] for item in result["checkpoints"][:4]], ["severe", "high", "no_travel", "moderate"])
+        self.assertEqual(result["severe_miles"], 0)
+        self.assertEqual(result["high_miles"], 10)
+        self.assertEqual(result["no_travel_miles"], 10)
+        self.assertEqual([segment["risk_level"] for segment in result["risk_segments"][:3]], ["high", "no_travel", "moderate"])
 
 
 class RoutePlanApiTests(TestCase):
@@ -80,6 +118,7 @@ class RoutePlanApiTests(TestCase):
             frames = payload["weather_frames"][metric]
             self.assertEqual(len(frames), 7)
             self.assertNotEqual(frames[0]["points"], frames[3]["points"])
+            self.assertNotEqual([point["value"] for point in frames[0]["points"]], [point["value"] for point in frames[3]["points"]])
             self.assertGreater(len({(point["x"], point["y"]) for point in frames[0]["points"]}), 1)
 
 
