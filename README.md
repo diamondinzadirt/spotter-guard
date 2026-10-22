@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Use `npm run lint`, `npm run typecheck`, and `npm run build` from `frontend/` to validate the application.
+Use `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build` from `frontend/` to validate the application. Frontend tests use Vitest with deterministic mocks; they do not call paid providers.
 
 ## Backend
 

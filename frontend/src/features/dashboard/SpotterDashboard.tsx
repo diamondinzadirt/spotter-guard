@@ -88,7 +88,7 @@ function CheckpointTable({ route, selectedCheckpoint, onCheckpoint }: { route: R
   return <div className="checkpoint-table"><div className="table-head"><span>mile</span><span>arrival</span><span>wind<br /><em>mph</em></span><span>rain<br /><em>in/hr</em></span><span>snow<br /><em>in/hr</em></span><span>risk</span></div>{route.checkpoints.map((checkpoint) => <button className={selectedCheckpoint?.id === checkpoint.id ? 'active' : ''} key={checkpoint.id} onClick={() => onCheckpoint(checkpoint)}><strong className="checkpoint-mile">{checkpoint.mile.toFixed(1)}</strong><span className="checkpoint-arrival">{formatTime(checkpoint.arrival_time)}</span><span className="checkpoint-wind">{Math.round(checkpoint.wind_mph)}</span><span className="checkpoint-rain">{checkpoint.rainfall_in_hr.toFixed(2)}</span><span className="checkpoint-snow">{checkpoint.snowfall_in_hr.toFixed(2)}</span><i title={`Risk: ${riskMeta[checkpoint.risk_level].label}`} aria-label={`Risk: ${riskMeta[checkpoint.risk_level].label}`} style={{ backgroundColor: riskMeta[checkpoint.risk_level].color }} /></button>)}</div>;
 }
 
-function App() {
+export function App() {
   const [request, setRequest] = useState<RoutePlanRequest>(() => { const departure = new Date(Date.now() + 60 * 60 * 1000); return { origin: 'Denver, CO', destination: 'Kansas City, MO', departure_time: toLocalDateTimeValue(departure), load_weight_lb: 42000, checkpoint_interval_miles: 25 }; });
   const [response, setResponse] = useState<RoutePlanResponse | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState('i70-central');
