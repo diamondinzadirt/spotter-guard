@@ -100,7 +100,14 @@ class RoutePlanningService:
         self.weather_provider = weather_provider or weather_provider_for_mode(self.mode, self.live_enabled)
 
     def plan(self, request):
-        candidates = demo_routes(request) if self.mode == "demo" else self.routing_provider.candidates(request["origin"], request["destination"], request["departure_time"], request["load_weight_lb"])
+        if self.mode == "demo":
+            origin = request["origin"].strip().casefold()
+            destination = request["destination"].strip().casefold()
+            if origin != "denver, co" or destination != "kansas city, mo":
+                raise ProviderError("Demo mode supports only Denver, CO to Kansas City, MO. Enable live routing for other corridors.")
+            candidates = demo_routes(request)
+        else:
+            candidates = self.routing_provider.candidates(request["origin"], request["destination"], request["departure_time"], request["load_weight_lb"])
         if self.mode != "demo":
             candidates = [replace(candidate, geometry=enrich_geometry(candidate.geometry, candidate.duration_minutes * 60)) for candidate in candidates]
         if not candidates:
@@ -112,9 +119,11 @@ class RoutePlanningService:
         recommended = ranked[0]
         recommended["recommended"] = True
         unsafe = all(route["no_travel_miles"] > 0 for route in routes)
+        weather_frames_by_route = {route.id: _weather_frames(route, self.weather_provider) for route in candidates[:3]}
         return {
             "routes": routes, "recommended_route_id": recommended["id"],
             "recommendation_explanation": "Recommended by severe miles, high miles, average risk, then duration. No-travel sections are flagged separately.",
             "safe_route_available": not unsafe, "data_source": self.mode,
-            "weather_frames": _weather_frames(candidates[0], self.weather_provider),
+            "weather_frames": weather_frames_by_route[candidates[0].id],
+            "weather_frames_by_route": weather_frames_by_route,
         }

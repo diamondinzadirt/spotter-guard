@@ -22,8 +22,8 @@ class OfflineWeatherProvider:
                 wind_mph=22 + (mile % 140) / 10,
                 rainfall_in_hr=0.04 + (mile % 100) / 1000,
                 snowfall_in_hr=0.1,
-                x=15 + min(72, mile / max(route.distance_miles, 1) * 72),
-                y=50,
+                x=point.longitude,
+                y=point.latitude,
             ))
         return readings
 

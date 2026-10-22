@@ -106,6 +106,46 @@ class RoutePlanApiTests(TestCase):
         self.assertEqual(payload["data_source"], "demo")
         self.assertEqual(len(payload["routes"]), 3)
         self.assertIn("safe_route_available", payload)
+        self.assertEqual(set(payload["weather_frames_by_route"]), {route["id"] for route in payload["routes"]})
+
+    def test_demo_api_honors_each_checkpoint_interval(self):
+        base_request = {
+            "origin": "Denver, CO", "destination": "Kansas City, MO",
+            "departure_time": datetime(2026, 10, 19, 20, tzinfo=timezone.utc).isoformat(),
+            "load_weight_lb": 42_000,
+        }
+        for interval in (10, 25, 50):
+            with self.subTest(interval=interval):
+                response = APIClient().post("/api/routes/plan", {**base_request, "checkpoint_interval_miles": interval}, format="json")
+                self.assertEqual(response.status_code, 200)
+                for route in response.json()["routes"]:
+                    miles = [checkpoint["mile"] for checkpoint in route["checkpoints"]]
+                    self.assertEqual(miles[0], 0)
+                    self.assertEqual(miles[1], interval)
+                    self.assertEqual(miles[2], interval * 2)
+                    self.assertEqual(miles[3], interval * 3)
+
+    def test_api_passes_load_weight_to_planning_service(self):
+        request = {
+            "origin": "Denver, CO", "destination": "Kansas City, MO",
+            "departure_time": datetime(2026, 10, 19, 20, tzinfo=timezone.utc).isoformat(),
+            "load_weight_lb": 42_000, "checkpoint_interval_miles": 25,
+        }
+        with patch("spotter.views.RoutePlanningService") as service_class:
+            service_class.return_value.plan.return_value = {"routes": [], "weather_frames": {}}
+            response = APIClient().post("/api/routes/plan", request, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(service_class.return_value.plan.call_args.args[0]["load_weight_lb"], 42_000)
+
+    def test_demo_loads_match_when_fixture_wind_is_below_load_sensitive_bands(self):
+        base_request = {
+            "origin": "Denver, CO", "destination": "Kansas City, MO",
+            "departure_time": datetime(2026, 10, 19, 20, tzinfo=timezone.utc), "checkpoint_interval_miles": 25,
+        }
+        light = RoutePlanningService(mode="demo").plan({**base_request, "load_weight_lb": 20_000})
+        heavy = RoutePlanningService(mode="demo").plan({**base_request, "load_weight_lb": 42_000})
+        self.assertEqual(light["recommended_route_id"], heavy["recommended_route_id"])
+        self.assertEqual([(route["overall_risk"], route["severe_miles"], route["high_miles"], route["no_travel_miles"]) for route in light["routes"]], [(route["overall_risk"], route["severe_miles"], route["high_miles"], route["no_travel_miles"]) for route in heavy["routes"]])
 
     def test_demo_weather_frames_vary_by_metric_location_and_time(self):
         response = APIClient().post("/api/routes/plan", {
@@ -120,6 +160,15 @@ class RoutePlanApiTests(TestCase):
             self.assertNotEqual(frames[0]["points"], frames[3]["points"])
             self.assertNotEqual([point["value"] for point in frames[0]["points"]], [point["value"] for point in frames[3]["points"]])
             self.assertGreater(len({(point["x"], point["y"]) for point in frames[0]["points"]}), 1)
+            self.assertTrue(all(-106 < point["x"] < -94 and 37 < point["y"] < 42 for point in frames[0]["points"]))
+
+        route_points = {route_id: {(point["x"], point["y"]) for point in frames["wind"][0]["points"]} for route_id, frames in payload["weather_frames_by_route"].items()}
+        self.assertGreater(len({frozenset(points) for points in route_points.values()}), 1)
+        for frames in payload["weather_frames_by_route"].values():
+            for metric in ("wind", "rain", "snow"):
+                self.assertEqual([frame["offset_hours"] for frame in frames[metric]], [0, 8, 16, 24, 32, 40, 48])
+                self.assertNotEqual(frames[metric][0]["points"], frames[metric][3]["points"])
+                self.assertNotEqual(frames[metric][3]["points"], frames[metric][6]["points"])
 
     def test_live_candidates_are_enriched_before_weather_sampling(self):
         route = RouteCandidate(

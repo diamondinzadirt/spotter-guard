@@ -51,6 +51,7 @@ export interface RoutePlanResponse {
   routes: RouteOption[];
   recommended_route_id: string;
   weather_frames: Record<WeatherMetric, WeatherFrame[]>;
+  weather_frames_by_route?: Record<string, Record<WeatherMetric, WeatherFrame[]>>;
   data_source?: 'demo' | 'live';
   safe_route_available?: boolean;
   recommendation_explanation?: string;
