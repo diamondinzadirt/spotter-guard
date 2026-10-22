@@ -2,7 +2,7 @@
 
 This is the Django REST Framework foundation for the Spotter Guard route-planning API.
 
-The backend deliberately does not contain a routing or weather provider yet. `POST /api/routes/plan` validates the frontend contract and returns `503 provider_not_configured` until a real provider is registered. This prevents fabricated weather or route results from being presented as live data.
+The backend includes an offline demo provider and separately gated HERE/Open-Meteo adapters. In safe demo mode, `POST /api/routes/plan` returns clearly labeled saved route and weather fixtures. Live mode requires explicit provider configuration and never falls back to demo data.
 
 ## Local setup
 
@@ -17,6 +17,8 @@ python manage.py runserver
 
 Set `SPOTTER_CORS_ALLOWED_ORIGINS` to a comma-separated list of frontend origins when needed. The default allows the local Vite development origin.
 
-Phase 3 defaults to `SPOTTER_ROUTE_MODE=demo` and `HERE_LIVE_ENABLED=false`. Demo mode uses saved route geometry and offline weather fixtures. Open-Meteo is only selected in deliberate live mode; HERE remains disabled unless explicitly enabled by an operator. Do not commit `.env` or API keys.
+The safe defaults are `SPOTTER_ROUTE_MODE=demo` and `HERE_LIVE_ENABLED=false`. Demo mode supports only Denver, CO to Kansas City, MO and rejects unsupported locations rather than returning unrelated geometry. Open-Meteo is only selected in deliberate live mode; HERE remains disabled unless explicitly enabled by an operator. Do not commit `.env` or API keys.
+
+For production, set `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, and `SPOTTER_CORS_ALLOWED_ORIGINS`. Start the WSGI application with `gunicorn config.wsgi:application`. The unauthenticated health check is `GET /api/health` and returns `{"status":"ok"}`. Set `DJANGO_SECURE_SSL_REDIRECT=1` only when the hosting proxy terminates HTTPS and forwards `X-Forwarded-Proto`.
 
 Threshold assumptions and unresolved source requirements are documented in `spotter/risk.py` and `../docs/API_CONTRACT.md`.

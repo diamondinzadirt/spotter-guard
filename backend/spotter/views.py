@@ -1,3 +1,4 @@
+from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -6,6 +7,10 @@ from .errors import error_response
 from .serializers import RoutePlanRequestSerializer
 from .services import RoutePlanningService
 from .providers import ProviderError, ProviderNotConfigured
+
+
+def health(request):
+    return JsonResponse({"status": "ok"})
 
 
 class RoutePlanView(APIView):

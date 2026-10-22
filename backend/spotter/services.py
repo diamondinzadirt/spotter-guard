@@ -1,9 +1,10 @@
 import os
 import math
+from dataclasses import replace
 from datetime import timedelta
 
 from .demo import demo_routes
-from .geometry import checkpoints
+from .geometry import checkpoints, enrich_geometry
 from .providers import ProviderError, ProviderNotConfigured, HereRoutingProvider
 from .risk import RiskLevel, RiskReading, classify_risk, recommendation_key
 from .weather import weather_provider_for_mode
@@ -54,13 +55,26 @@ def _risk_for_route(route, weather_provider, request):
 
 
 def _weather_frames(route, weather_provider):
-    readings = weather_provider.readings(route, route.departure_time)
+    forecast_reader = getattr(weather_provider, "forecast_readings", None)
+    if forecast_reader:
+        reading_frames = forecast_reader(route, [offset * 8 for offset in range(7)])
+    else:
+        reading_frames = [weather_provider.readings(route, route.departure_time)] * 7
+    readings = [] if forecast_reader else weather_provider.readings(route, route.departure_time)
     frames = {"wind": [], "rain": [], "snow": []}
     for offset in range(7):
         valid_at = (route.departure_time + timedelta(hours=offset * 8)).isoformat()
+        frame_readings = reading_frames[offset]
+        if forecast_reader and frame_readings:
+            valid_at = frame_readings[0].valid_at.isoformat()
         for metric in frames:
             points = []
-            for reading in readings:
+            for reading in (frame_readings or readings):
+                if forecast_reader:
+                    value = {"wind": reading.wind_mph / 60, "rain": reading.rainfall_in_hr, "snow": reading.snowfall_in_hr / 3}[metric]
+                    measurement = {"wind": reading.wind_mph, "rain": reading.rainfall_in_hr, "snow": reading.snowfall_in_hr}[metric]
+                    points.append({"x": reading.x, "y": reading.y, "intensity": min(1, max(0, value)), "value": round(measurement, 3), "unit": "mph" if metric == "wind" else "in/hr"})
+                    continue
                 base = {"wind": reading.wind_mph / 60, "rain": reading.rainfall_in_hr / 1.0, "snow": reading.snowfall_in_hr / 3.0}[metric]
                 spatial_variation = 1 + 0.22 * math.sin(reading.x * 3 + reading.y * 2 + offset)
                 time_variation = 1 + 0.12 * math.sin(offset * 1.7 + reading.mile / 90)
@@ -86,7 +100,16 @@ class RoutePlanningService:
         self.weather_provider = weather_provider or weather_provider_for_mode(self.mode, self.live_enabled)
 
     def plan(self, request):
-        candidates = demo_routes(request) if self.mode == "demo" else self.routing_provider.candidates(request["origin"], request["destination"], request["departure_time"], request["load_weight_lb"])
+        if self.mode == "demo":
+            origin = request["origin"].strip().casefold()
+            destination = request["destination"].strip().casefold()
+            if origin != "denver, co" or destination != "kansas city, mo":
+                raise ProviderError("Demo mode supports only Denver, CO to Kansas City, MO. Enable live routing for other corridors.")
+            candidates = demo_routes(request)
+        else:
+            candidates = self.routing_provider.candidates(request["origin"], request["destination"], request["departure_time"], request["load_weight_lb"])
+        if self.mode != "demo":
+            candidates = [replace(candidate, geometry=enrich_geometry(candidate.geometry, candidate.duration_minutes * 60)) for candidate in candidates]
         if not candidates:
             raise ProviderError("No valid truck routes are available")
         routes = [_risk_for_route(route, self.weather_provider, request) for route in candidates[:3]]
@@ -96,9 +119,11 @@ class RoutePlanningService:
         recommended = ranked[0]
         recommended["recommended"] = True
         unsafe = all(route["no_travel_miles"] > 0 for route in routes)
+        weather_frames_by_route = {route.id: _weather_frames(route, self.weather_provider) for route in candidates[:3]}
         return {
             "routes": routes, "recommended_route_id": recommended["id"],
             "recommendation_explanation": "Recommended by severe miles, high miles, average risk, then duration. No-travel sections are flagged separately.",
             "safe_route_available": not unsafe, "data_source": self.mode,
-            "weather_frames": _weather_frames(candidates[0], self.weather_provider),
+            "weather_frames": weather_frames_by_route[candidates[0].id],
+            "weather_frames_by_route": weather_frames_by_route,
         }
