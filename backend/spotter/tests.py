@@ -90,6 +90,11 @@ class RouteRiskAggregationTests(TestCase):
 
 
 class RoutePlanApiTests(TestCase):
+    def test_health_endpoint_returns_ok_without_provider_calls(self):
+        response = APIClient().get("/api/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+
     def test_invalid_payload_returns_contract_error(self):
         response = APIClient().post("/api/routes/plan", {}, format="json")
         self.assertEqual(response.status_code, 400)
