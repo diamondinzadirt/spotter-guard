@@ -7,6 +7,7 @@ import { Compass, Layers3, Menu, X } from 'lucide-react';
 import type { Checkpoint, RiskLevel, RouteOption, WeatherFrame } from '@/types';
 import { riskColors } from '@/styles/riskColors';
 
+const checkpointColors: Record<RiskLevel, string> = { low: '#1c8a5b', moderate: '#be8b06', high: '#e56f12', severe: '#d4482e', no_travel: '#151918' };
 const routeColors = ['#176b49', '#2c6e9e', '#9b5a2e'];
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -77,15 +78,15 @@ export default function MapCanvas({ routes, selectedRoute, frame, metric, select
       const heatSource = { type: 'geojson' as const, data: { type: 'FeatureCollection' as const, features: framePoints.map((point) => ({ type: 'Feature' as const, properties: { intensity: point.intensity }, geometry: { type: 'Point' as const, coordinates: [point.x, point.y] } })) } };
       const weatherColor = ['interpolate', ['linear'], ['get', 'intensity'], 0, riskColors.low, 0.35, riskColors.moderate, 0.7, riskColors.high, 0.9, riskColors.severe, 1, riskColors.no_travel] as unknown as maplibregl.DataDrivenPropertyValueSpecification<string>;
       if (instance.getSource('weather-heat')) (instance.getSource('weather-heat') as maplibregl.GeoJSONSource).setData(heatSource.data);
-      else { instance.addSource('weather-heat', heatSource); instance.addLayer({ id: 'weather-heat', type: 'circle', source: 'weather-heat', layout: { visibility: showWeather ? 'visible' : 'none' }, paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'intensity'], 0, 16, 0.5, 28, 1, 40], 'circle-color': weatherColor, 'circle-opacity': ['interpolate', ['linear'], ['get', 'intensity'], 0, 0.32, 0.5, 0.62, 1, 0.86], 'circle-blur': 0.65, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1, 'circle-stroke-opacity': 0.22 } }); }
-      if (instance.getLayer('weather-heat')) { instance.setPaintProperty('weather-heat', 'circle-color', weatherColor); instance.setPaintProperty('weather-heat', 'circle-radius', ['interpolate', ['linear'], ['get', 'intensity'], 0, 16, 0.5, 28, 1, 40]); instance.setPaintProperty('weather-heat', 'circle-opacity', ['interpolate', ['linear'], ['get', 'intensity'], 0, 0.32, 0.5, 0.62, 1, 0.86]); instance.setPaintProperty('weather-heat', 'circle-stroke-color', '#ffffff'); instance.setPaintProperty('weather-heat', 'circle-stroke-width', 1); instance.setPaintProperty('weather-heat', 'circle-stroke-opacity', 0.22); }
+      else { instance.addSource('weather-heat', heatSource); instance.addLayer({ id: 'weather-heat', type: 'circle', source: 'weather-heat', layout: { visibility: showWeather ? 'visible' : 'none' }, paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'intensity'], 0, 22, 0.5, 36, 1, 50], 'circle-color': weatherColor, 'circle-opacity': ['interpolate', ['linear'], ['get', 'intensity'], 0, 0.5, 0.5, 0.78, 1, 0.94], 'circle-blur': 0.35, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.4 } }); }
+      if (instance.getLayer('weather-heat')) { instance.setPaintProperty('weather-heat', 'circle-color', weatherColor); instance.setPaintProperty('weather-heat', 'circle-radius', ['interpolate', ['linear'], ['get', 'intensity'], 0, 22, 0.5, 36, 1, 50]); instance.setPaintProperty('weather-heat', 'circle-opacity', ['interpolate', ['linear'], ['get', 'intensity'], 0, 0.5, 0.5, 0.78, 1, 0.94]); instance.setPaintProperty('weather-heat', 'circle-stroke-color', '#ffffff'); instance.setPaintProperty('weather-heat', 'circle-stroke-width', 1.5); instance.setPaintProperty('weather-heat', 'circle-stroke-opacity', 0.4); }
       if (instance.getLayer('weather-heat')) instance.setLayoutProperty('weather-heat', 'visibility', showWeather ? 'visible' : 'none');
       routes.forEach((route) => { const routeId = `route-${route.id}`; if (instance.getLayer(routeId)) instance.moveLayer(routeId); });
       markers.current.forEach((marker) => marker.remove()); markers.current = [];
       selectedRoute?.checkpoints.forEach((checkpoint) => {
         const element = document.createElement('div');
         const button = document.createElement('button');
-        element.className = 'checkpoint-marker-hit'; button.type = 'button'; button.className = 'checkpoint-marker'; button.style.background = riskColors[checkpoint.risk_level]; button.style.boxShadow = `0 0 0 2px #ffffff, 0 0 0 4px ${riskColors[checkpoint.risk_level]}99, 0 1px 5px #17231d55`; button.setAttribute('aria-label', `Checkpoint mile ${checkpoint.mile}`); button.title = `Checkpoint mile ${checkpoint.mile}`;
+        element.className = 'checkpoint-marker-hit'; button.type = 'button'; button.className = 'checkpoint-marker'; button.style.background = checkpointColors[checkpoint.risk_level]; button.style.boxShadow = `0 0 0 2px #ffffff, 0 0 0 4px ${checkpointColors[checkpoint.risk_level]}99, 0 1px 5px #17231d55`; button.setAttribute('aria-label', `Checkpoint mile ${checkpoint.mile}`); button.title = `Checkpoint mile ${checkpoint.mile}`;
         button.onclick = (event) => { event.stopPropagation(); onCheckpoint(checkpoint); };
         if (selectedCheckpoint?.id === checkpoint.id) { button.classList.add('active'); element.classList.add('active'); }
         button.setAttribute('data-checkpoint-id', checkpoint.id); element.style.display = showCheckpoints ? '' : 'none'; element.appendChild(button);
