@@ -52,7 +52,7 @@ export interface RoutePlanResponse {
   recommended_route_id: string;
   weather_frames: Record<WeatherMetric, WeatherFrame[]>;
   weather_frames_by_route?: Record<string, Record<WeatherMetric, WeatherFrame[]>>;
-  data_source?: 'demo' | 'live';
+  data_source?: 'demo' | 'live' | 'valhalla';
   safe_route_available?: boolean;
   recommendation_explanation?: string;
 }

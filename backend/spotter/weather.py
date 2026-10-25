@@ -1,5 +1,6 @@
 import json
 import os
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 from urllib.error import HTTPError, URLError
@@ -16,12 +17,15 @@ class OfflineWeatherProvider:
         readings = []
         for point in route.geometry:
             mile = point.cumulative_miles
+            geographic_cell = math.sin(point.latitude * 0.22 + point.longitude * 0.17) + math.sin(point.longitude * 0.31 - point.latitude * 0.11)
+            corridor_cell = math.sin(mile / 68 + point.latitude * 0.08)
+            intensity = (geographic_cell + corridor_cell + 3) / 6
             readings.append(WeatherReading(
                 valid_at=departure_time,
                 mile=mile,
-                wind_mph=22 + (mile % 140) / 10,
-                rainfall_in_hr=0.04 + (mile % 100) / 1000,
-                snowfall_in_hr=0.1,
+                wind_mph=round(16 + intensity * 17 + max(0, math.sin(mile / 180 + point.longitude)) * 7, 2),
+                rainfall_in_hr=round(0.025 + intensity * 0.16, 3),
+                snowfall_in_hr=round(0.04 + intensity * 0.55, 3),
                 x=point.longitude,
                 y=point.latitude,
             ))

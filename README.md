@@ -54,6 +54,11 @@ Backend variables belong in `backend/.env` and must never be committed:
 - `SPOTTER_ROUTE_MODE` — `demo` for the safe offline fixture mode; `live` only when deliberately configured.
 - `HERE_LIVE_ENABLED` — remains `false` for this submission.
 - `HERE_API_KEY` — backend-only live-routing credential; not required in demo mode and never placed in frontend variables.
+- `HERE_REQUEST_BUDGET` — persistent maximum number of live HERE route requests; keep `0` unless live routing is explicitly approved.
+- `SPOTTER_ROUTING_PROVIDER` — `demo` for the Denver fixture, or `valhalla` to route Dallas–Los Angeles and Seattle–Portland through the configured Valhalla service.
+- `VALHALLA_BASE_URL` — Valhalla service URL; defaults to `https://valhalla1.openstreetmap.de`.
+- `VALHALLA_CLIENT_ID` — identifying client value sent to the public Valhalla service.
+- `PHOTON_BASE_URL` — submit-time OpenStreetMap-based geocoding endpoint; no requests are made while typing.
 - `DJANGO_SECURE_SSL_REDIRECT` — defaults to `1` when `DJANGO_DEBUG=0`; set `0` only for a deliberately non-HTTPS local/proxy setup.
 - `DJANGO_SECURE_HSTS_SECONDS` — set a positive value only after HTTPS is confirmed end-to-end; keep `0` during local development.
 - `DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS` and `DJANGO_SECURE_HSTS_PRELOAD` — optional HSTS hardening; enable only when every relevant subdomain is HTTPS and preload requirements are understood.
@@ -62,7 +67,7 @@ Backend variables belong in `backend/.env` and must never be committed:
 
 The safe public demo uses three saved alternatives—Northern Nebraska, I-70 Central, and Southern Plains—for **Denver, CO → Kansas City, MO**. It generates checkpoints at 10, 25, or 50-mile intervals, interpolates coordinates and arrival times, and evaluates weather at checkpoint arrival times.
 
-Other city/state combinations are rejected clearly in demo mode; they are not silently mapped to Denver–Kansas City. The HERE truck-routing adapter supports future live integration, but live routing is intentionally disabled and has not been used for this submission. Full arbitrary-corridor routing requires provider credentials, billing permission, deployment configuration, and verification of HERE account costs and limits.
+With `SPOTTER_ROUTING_PROVIDER=valhalla`, Dallas, TX → Los Angeles, CA and Seattle, WA → Portland, OR use Valhalla's truck costing and accept the valid alternatives returned by that service. The public service is rate-limited and may return fewer than three alternatives; the application never fabricates routes. HERE remains disabled and is not required for Valhalla mode. Other city/state combinations are rejected clearly.
 
 ## Risk and recommendation rules
 

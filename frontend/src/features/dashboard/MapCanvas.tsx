@@ -6,6 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Compass, Layers3, Menu, X } from 'lucide-react';
 import type { Checkpoint, RiskLevel, RouteOption, WeatherFrame } from '@/types';
 import { riskColors } from '@/styles/riskColors';
+import { US_STATES } from '@/data/states';
 
 const checkpointColors: Record<RiskLevel, string> = { low: '#1c8a5b', moderate: '#be8b06', high: '#e56f12', severe: '#d4482e', no_travel: '#151918' };
 const routeColors = ['#176b49', '#2c6e9e', '#9b5a2e'];
@@ -16,7 +17,13 @@ function geometry(route: RouteOption) {
   return route.geojson_geometry ?? { type: 'LineString' as const, coordinates: route.geometry.map((point) => [point.x, point.y] as [number, number]) };
 }
 
-export default function MapCanvas({ routes, selectedRoute, frame, metric, selectedCheckpoint, onCheckpoint, onRouteSelect }: { routes: RouteOption[]; selectedRoute?: RouteOption; frame?: WeatherFrame; metric: 'wind' | 'rain' | 'snow'; selectedCheckpoint?: Checkpoint; onCheckpoint: (checkpoint?: Checkpoint) => void; onRouteSelect: (routeId: string) => void }) {
+function locationLabel(value: string) {
+  const [city, code] = value.split(',').map((part) => part.trim());
+  const state = US_STATES.find(([abbreviation]) => abbreviation === code?.toUpperCase())?.[1] ?? code;
+  return `${city}, ${state}`;
+}
+
+export default function MapCanvas({ routes, selectedRoute, frame, metric, selectedCheckpoint, onCheckpoint, onRouteSelect, origin, destination }: { routes: RouteOption[]; selectedRoute?: RouteOption; frame?: WeatherFrame; metric: 'wind' | 'rain' | 'snow'; selectedCheckpoint?: Checkpoint; onCheckpoint: (checkpoint?: Checkpoint) => void; onRouteSelect: (routeId: string) => void; origin: string; destination: string }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<Map | undefined>(undefined);
   const markers = useRef<Marker[]>([]);
@@ -92,6 +99,19 @@ export default function MapCanvas({ routes, selectedRoute, frame, metric, select
         button.setAttribute('data-checkpoint-id', checkpoint.id); element.style.display = showCheckpoints ? '' : 'none'; element.appendChild(button);
         const marker = new maplibregl.Marker({ element }).setLngLat([checkpoint.longitude ?? checkpoint.x, checkpoint.latitude ?? checkpoint.y]).addTo(instance); markers.current.push(marker);
       });
+      if (selectedRoute?.geometry.length >= 2) {
+        const routeCoordinates = geometry(selectedRoute).coordinates;
+        const first = routeCoordinates[0] as [number, number];
+        const last = routeCoordinates[routeCoordinates.length - 1] as [number, number];
+        ([['start', '🚚', `START — ${locationLabel(origin)}`, first], ['end', '🏁', `END — ${locationLabel(destination)}`, last]] as const).forEach(([kind, icon, label, coordinate]) => {
+          const element = document.createElement('div');
+          element.className = `route-location-marker ${kind}`;
+          element.innerHTML = `<span class="route-location-icon" aria-hidden="true">${icon}</span><span class="route-location-label">${label}</span>`;
+          element.setAttribute('role', 'img'); element.setAttribute('aria-label', label);
+          const marker = new maplibregl.Marker({ element, anchor: 'bottom' }).setLngLat(coordinate).addTo(instance);
+          markers.current.push(marker);
+        });
+      }
       const nextRouteSignature = routes.map((route) => `${route.id}:${route.geometry.length}:${route.checkpoints.length}`).join('|');
       if (routes.length && routeSignature.current !== nextRouteSignature) {
         fitRoutes();
@@ -99,7 +119,7 @@ export default function MapCanvas({ routes, selectedRoute, frame, metric, select
       }
     };
     render();
-  }, [routes, selectedRoute, framePoints, metric, selectedCheckpoint, onCheckpoint, onRouteSelect, showRoutes, showCheckpoints, showWeather, fitRoutes, mapReady]);
+  }, [routes, selectedRoute, framePoints, metric, selectedCheckpoint, onCheckpoint, onRouteSelect, showRoutes, showCheckpoints, showWeather, fitRoutes, mapReady, origin, destination]);
 
   return <div className="map-shell"><div className="map-toolbar"><button onClick={fitRoutes}><Compass size={15} /> Fit corridor</button><div className="map-actions"><div className="map-control-wrap"><button aria-label="Layers" aria-expanded={layersOpen} onClick={() => { setLayersOpen((open) => !open); setMenuOpen(false); }}><Layers3 size={16} /></button>{layersOpen && <div className="map-popover" role="dialog" aria-label="Map layers"><label><input type="checkbox" checked={showRoutes} onChange={(event) => setShowRoutes(event.target.checked)} /> Route lines</label><label><input type="checkbox" checked={showCheckpoints} onChange={(event) => setShowCheckpoints(event.target.checked)} /> Checkpoints</label><label><input type="checkbox" checked={showWeather} onChange={(event) => setShowWeather(event.target.checked)} /> Weather overlay</label><label><input type="checkbox" checked={showLegend} onChange={(event) => setShowLegend(event.target.checked)} /> Weather legend</label></div>}</div><div className="map-control-wrap"><button aria-label="Map controls" aria-expanded={menuOpen} onClick={() => { setMenuOpen((open) => !open); setLayersOpen(false); }}><Menu size={16} /></button>{menuOpen && <div className="map-popover map-menu-popover" role="menu"><button role="menuitem" onClick={() => { fitRoutes(); setMenuOpen(false); }}>Fit routes</button><button role="menuitem" onClick={() => { map.current?.resetNorthPitch(); fitRoutes(); setMenuOpen(false); }}>Reset view</button><button role="menuitem" onClick={() => { setShowLegend((visible) => !visible); setMenuOpen(false); }}>{showLegend ? 'Hide' : 'Show'} legend</button></div>}</div></div></div><div ref={container} className="maplibre-container" role="img" aria-label="Interactive truck route map" /><div className={`map-legend ${showLegend ? '' : 'hidden'}`}><span className="eyebrow">{metric} intensity</span>{(Object.keys(riskColors) as RiskLevel[]).map((risk) => <div key={risk}><i style={{ backgroundColor: riskColors[risk] }} />{risk.replace('_', ' ')}</div>)}<span className="simulated-label">Simulated weather · risk is load-adjusted</span></div>{selectedCheckpoint && <div className="checkpoint-popover"><button onClick={() => onCheckpoint(undefined)} aria-label="Close checkpoint"><X size={15} /></button><span className="eyebrow">checkpoint / mile {selectedCheckpoint.mile.toFixed(1)}</span><strong>{new Date(selectedCheckpoint.arrival_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} arrival</strong><div className="checkpoint-weather"><span>Wind <b>{selectedCheckpoint.wind_mph.toFixed(1)} mph</b></span><span>Rain <b>{selectedCheckpoint.rainfall_in_hr.toFixed(2)} in/hr</b></span><span>Snow <b>{selectedCheckpoint.snowfall_in_hr.toFixed(2)} in/hr</b></span></div><div className="checkpoint-risk"><span>Risk</span><b style={{ color: riskColors[selectedCheckpoint.risk_level] }}>{selectedCheckpoint.risk_level.replace('_', ' ')}</b></div>{(selectedCheckpoint.longitude !== undefined && selectedCheckpoint.latitude !== undefined) && <span><b>{selectedCheckpoint.longitude.toFixed(3)}, {selectedCheckpoint.latitude.toFixed(3)}</b></span>}</div>}</div>;
 }

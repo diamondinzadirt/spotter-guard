@@ -1,13 +1,16 @@
 import os
+from django.db import transaction
 import math
 from dataclasses import replace
 from datetime import timedelta
 
 from .demo import demo_routes
 from .geometry import checkpoints, enrich_geometry
-from .providers import ProviderError, ProviderNotConfigured, HereRoutingProvider
+from .providers import ProviderError, ProviderNotConfigured, HereRoutingProvider, ValhallaRoutingProvider
 from .risk import RiskLevel, RiskReading, classify_risk, recommendation_key
 from .weather import weather_provider_for_mode
+from .models import HereUsage
+from .supported import journey_key
 
 
 RISK_VALUE = {RiskLevel.LOW: 0, RiskLevel.MODERATE: 1, RiskLevel.HIGH: 2, RiskLevel.SEVERE: 3, RiskLevel.NO_TRAVEL: 4}
@@ -87,43 +90,59 @@ def _weather_frames(route, weather_provider):
 
 class RoutePlanningService:
     def __init__(self, routing_provider=None, weather_provider=None, mode=None, live_enabled=None):
-        self.mode = mode or os.getenv("SPOTTER_ROUTE_MODE", "demo").lower()
+        self.mode = mode or os.getenv("SPOTTER_ROUTE_MODE", "live").lower()
         self.live_enabled = live_enabled if live_enabled is not None else os.getenv("HERE_LIVE_ENABLED", "false").lower() == "true"
+        self.routing_provider_name = os.getenv("SPOTTER_ROUTING_PROVIDER", "demo").lower()
         if routing_provider:
             self.routing_provider = routing_provider
-        elif self.mode == "demo":
+        elif self.routing_provider_name == "valhalla":
+            self.routing_provider = ValhallaRoutingProvider()
+        elif self.mode == "demo" and self.routing_provider_name == "demo":
             self.routing_provider = None
-        elif self.mode == "live" and self.live_enabled:
-            self.routing_provider = HereRoutingProvider()
+        elif self.mode == "live" and self.routing_provider_name == "demo" and not self.live_enabled:
+            raise ProviderNotConfigured("Live routing is disabled; configure SPOTTER_ROUTING_PROVIDER=valhalla")
+        elif self.routing_provider_name == "valhalla" or self.mode in {"demo", "live"}:
+            self.routing_provider = ValhallaRoutingProvider()
         else:
             raise ProviderNotConfigured("Live HERE routing is disabled; use SPOTTER_ROUTE_MODE=demo or explicitly enable HERE_LIVE_ENABLED")
-        self.weather_provider = weather_provider or weather_provider_for_mode(self.mode, self.live_enabled)
+        weather_mode = "demo"
+        self.weather_provider = weather_provider or weather_provider_for_mode(weather_mode, self.live_enabled)
 
     def plan(self, request):
-        if self.mode == "demo":
-            origin = request["origin"].strip().casefold()
-            destination = request["destination"].strip().casefold()
-            if origin != "denver, co" or destination != "kansas city, mo":
-                raise ProviderError("Demo mode supports only Denver, CO to Kansas City, MO. Enable live routing for other corridors.")
+        key = journey_key(request["origin"], request["destination"])
+        if not request["origin"].strip() or not request["destination"].strip():
+            raise ProviderError("Origin and destination are required")
+        if self.mode == "demo" and key == ("denver, co", "kansas city, mo"):
             candidates = demo_routes(request)
         else:
             candidates = self.routing_provider.candidates(request["origin"], request["destination"], request["departure_time"], request["load_weight_lb"])
-        if self.mode != "demo":
-            candidates = [replace(candidate, geometry=enrich_geometry(candidate.geometry, candidate.duration_minutes * 60)) for candidate in candidates]
+        candidates = [replace(candidate, geometry=enrich_geometry(candidate.geometry, candidate.duration_minutes * 60)) for candidate in candidates]
         if not candidates:
             raise ProviderError("No valid truck routes are available")
         routes = [_risk_for_route(route, self.weather_provider, request) for route in candidates[:3]]
-        if len(routes) < 3:
-            raise ProviderError(f"Only {len(routes)} route alternatives are available")
+        if not routes:
+            raise ProviderError("No valid route alternatives are available")
         ranked = sorted(routes, key=recommendation_key)
         recommended = ranked[0]
         recommended["recommended"] = True
         unsafe = all(route["no_travel_miles"] > 0 for route in routes)
         weather_frames_by_route = {route.id: _weather_frames(route, self.weather_provider) for route in candidates[:3]}
         return {
-            "routes": routes, "recommended_route_id": recommended["id"],
+            "routes": ranked, "recommended_route_id": recommended["id"],
             "recommendation_explanation": "Recommended by severe miles, high miles, average risk, then duration. No-travel sections are flagged separately.",
-            "safe_route_available": not unsafe, "data_source": self.mode,
+            "safe_route_available": not unsafe,
+            "data_source": "demo" if self.mode == "demo" and key == ("denver, co", "kansas city, mo") else "valhalla",
             "weather_frames": weather_frames_by_route[candidates[0].id],
             "weather_frames_by_route": weather_frames_by_route,
         }
+
+    def _reserve_here_request(self):
+        limit = int(os.getenv("HERE_REQUEST_BUDGET", "0"))
+        if limit <= 0:
+            raise ProviderNotConfigured("HERE live routing is disabled until HERE_REQUEST_BUDGET is configured")
+        with transaction.atomic():
+            usage, _ = HereUsage.objects.select_for_update().get_or_create(id=1)
+            if usage.requests_used >= limit:
+                raise ProviderNotConfigured("HERE routing request budget is exhausted")
+            usage.requests_used += 1
+            usage.save(update_fields=["requests_used", "updated_at"])
