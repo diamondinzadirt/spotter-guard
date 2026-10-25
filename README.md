@@ -110,7 +110,4 @@ SQLite is sufficient for the stateless assessment service, but ephemeral hosting
 - Simulated weather is for assessment demonstration, not operational dispatch decisions.
 - MapLibre tiles and hosted frontend/API connectivity require deployment-level verification.
 
-## Links
 
-- Hosted application: to be added
-- Loom walkthrough: to be added
