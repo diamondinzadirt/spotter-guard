@@ -1,20 +1,20 @@
 # Spotter Guard
 
-Spotter Guard is a React + Django assessment application for helping commercial truck drivers compare routes using weather, load weight, risk, checkpoints, and travel time.
+Spotter Guard is a weather-aware truck route planner. Drivers enter a journey, departure date/time, load weight and checkpoint interval, then compare truck routes, checkpoint risks and travel time on an interactive map.
 
-Developed and maintained by [John Tasie](https://tasie.vercel.app).
+Developed and maintained by [John Tasie](https://tasie.vercel.app) (`tasiejohn777@gmail.com`).
 
-## Architecture
+## Stack
 
-- `frontend/` — Vite, React, TypeScript, Tailwind CSS, MapLibre GL, typed adapters, fixtures, and responsive dashboard UI.
-- `backend/` — Django REST Framework API, route orchestration, checkpoint geometry, weather providers, risk engine, and recommendation ranking.
-- `docs/` — API contract, assessment rules, and implementation assumptions.
+- `frontend/`: React, TypeScript, Vite, CSS and MapLibre GL.
+- `backend/`: Django REST Framework with Photon geocoding, Valhalla truck routing, checkpoint geometry, simulated weather and the risk engine.
+- `docs/API_CONTRACT.md`: request/response schema and assessment rules.
 
-The frontend calls `POST /api/routes/plan`. MapLibre renders route GeoJSON, checkpoint markers, and a geographic weather corridor overlay. The forecast control exposes seven demo frames from `+0h` through `+48h`.
+The frontend calls `POST /api/routes/plan`. MapLibre displays route GeoJSON, checkpoints, endpoint markers and a geographic weather overlay with a `0–48h` forecast slider.
 
 ## Local setup
 
-### Backend
+Backend:
 
 ```sh
 cd backend
@@ -26,9 +26,7 @@ python manage.py test
 python manage.py runserver
 ```
 
-### Frontend
-
-In a second terminal:
+Frontend, in a second terminal:
 
 ```sh
 cd frontend
@@ -37,75 +35,57 @@ cp .env.example .env
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal. The local frontend normally runs at `http://localhost:5173` and Django at `http://127.0.0.1:8000`.
+Set `VITE_API_BASE_URL` in `frontend/.env` when Django is not running at `http://127.0.0.1:8000`.
+
+`frontend/.env.example` contains the local API URL. This is the only frontend environment variable.
 
 ## Configuration
 
-Frontend variables are exposed to browser code only when prefixed with `VITE_`:
+Backend variables belong in `backend/.env` and must not be committed. The checked-in example is safe for offline development; Valhalla-backed routing uses:
 
-- `VITE_API_BASE_URL` — Django API base URL; default local value is `http://127.0.0.1:8000`.
+- `DJANGO_DEBUG`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`
+- `SPOTTER_CORS_ALLOWED_ORIGINS`
+- `SPOTTER_ROUTE_MODE=live`
+- `SPOTTER_ROUTING_PROVIDER=valhalla`
+- `VALHALLA_BASE_URL` and `VALHALLA_CLIENT_ID`
+- `PHOTON_BASE_URL`
+- `DJANGO_SECURE_SSL_REDIRECT` and optional HSTS settings for HTTPS hosting
 
-Backend variables belong in `backend/.env` and must never be committed:
+Photon geocoding and Valhalla routing run server-side. API credentials are not exposed to the frontend. Keep `HERE_LIVE_ENABLED=false`; the application does not use HERE for normal route requests.
 
-- `DJANGO_DEBUG` — use `1` locally and `0` in production.
-- `DJANGO_SECRET_KEY` — required, non-default secret in production.
-- `DJANGO_ALLOWED_HOSTS` — comma-separated backend hostnames.
-- `SPOTTER_CORS_ALLOWED_ORIGINS` — comma-separated deployed frontend origins.
-- `SPOTTER_ROUTE_MODE` — `demo` for the safe offline fixture mode; `live` only when deliberately configured.
-- `HERE_LIVE_ENABLED` — remains `false` for this submission.
-- `HERE_API_KEY` — backend-only live-routing credential; not required in demo mode and never placed in frontend variables.
-- `HERE_REQUEST_BUDGET` — persistent maximum number of live HERE route requests; keep `0` unless live routing is explicitly approved.
-- `SPOTTER_ROUTING_PROVIDER` — `demo` for the Denver fixture, or `valhalla` to route Dallas–Los Angeles and Seattle–Portland through the configured Valhalla service.
-- `VALHALLA_BASE_URL` — Valhalla service URL; defaults to `https://valhalla1.openstreetmap.de`.
-- `VALHALLA_CLIENT_ID` — identifying client value sent to the public Valhalla service.
-- `PHOTON_BASE_URL` — submit-time OpenStreetMap-based geocoding endpoint; no requests are made while typing.
-- `DJANGO_SECURE_SSL_REDIRECT` — defaults to `1` when `DJANGO_DEBUG=0`; set `0` only for a deliberately non-HTTPS local/proxy setup.
-- `DJANGO_SECURE_HSTS_SECONDS` — set a positive value only after HTTPS is confirmed end-to-end; keep `0` during local development.
-- `DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS` and `DJANGO_SECURE_HSTS_PRELOAD` — optional HSTS hardening; enable only when every relevant subdomain is HTTPS and preload requirements are understood.
+## Routing and analysis
 
-## Demo and live routing
+Valhalla requests use truck routing and return the valid alternatives available from the routing service; the application never fabricates routes. Checkpoints are generated along each route at `10`, `25` or `50` mile intervals. Arrival times are estimated from route geometry and duration, and simulated weather values are evaluated at those checkpoints.
 
-The safe public demo uses three saved alternatives—Northern Nebraska, I-70 Central, and Southern Plains—for **Denver, CO → Kansas City, MO**. It generates checkpoints at 10, 25, or 50-mile intervals, interpolates coordinates and arrival times, and evaluates weather at checkpoint arrival times.
+Weather is simulated, deterministic and clearly marked in the interface. It varies by route geography, checkpoint and forecast time; it is not a live weather forecast.
 
-With `SPOTTER_ROUTING_PROVIDER=valhalla`, Dallas, TX → Los Angeles, CA and Seattle, WA → Portland, OR use Valhalla's truck costing and accept the valid alternatives returned by that service. The public service is rate-limited and may return fewer than three alternatives; the application never fabricates routes. HERE remains disabled and is not required for Valhalla mode. Other city/state combinations are rejected clearly.
-
-## Risk and recommendation rules
-
-Wind, rain, and snow use the assessment thresholds documented in `docs/API_CONTRACT.md`. Load adjustments are exact:
-
-- Wind `>=55 mph`: No Travel for every load.
-- Wind `45–<55 mph` with load `>30,000 lb`: No Travel.
-- Wind `35–<45 mph` with load `>40,000 lb`: Severe.
-
-The highest applicable weather risk is used for combined conditions. Recommendations are ranked lexicographically by:
+Risk uses the assessment wind, rain, snow and load rules documented in `docs/API_CONTRACT.md`. Route recommendations use this order:
 
 1. Fewest Severe miles.
 2. Fewest High miles.
 3. Lowest average risk.
 4. Shortest duration.
 
-No-travel mileage is reported separately and is not silently inserted into the required ranking order.
+No-travel mileage is reported separately and does not silently change that ranking.
 
-## Testing and production build
+## Testing and build
 
 ```sh
-# Frontend
 cd frontend
-npm test
+npm run test -- --run
 npm run lint
-npm run typecheck
+npx tsc --noEmit
 npm run build
 
-# Backend
 cd ../backend
-.venv/bin/python manage.py test
+python manage.py test
 ```
 
-Frontend tests use Vitest, React Testing Library, jsdom, and deterministic mocked API responses. No test invokes HERE or another paid provider.
+Tests use mocked provider responses and do not call paid routing services.
 
-## Deployment guidance
+## Deployment
 
-Build the frontend as static assets and serve `frontend/dist` from a static host or CDN:
+Build the frontend as static files:
 
 ```sh
 cd frontend
@@ -113,29 +93,24 @@ npm ci
 npm run build
 ```
 
-Set `VITE_API_BASE_URL` at build time to the deployed Django URL. The Django service can run with a production WSGI server such as Gunicorn after installing `backend/requirements.txt` plus the chosen server package in the deployment environment:
+Set `VITE_API_BASE_URL` to the deployed Django API before the build. Run Django with Gunicorn:
 
 ```sh
 cd backend
 gunicorn config.wsgi:application
 ```
 
-The API health check is `GET https://<backend-host>/api/health` and returns `{"status":"ok"}` without contacting any provider. Run `python manage.py collectstatic --noinput` during deployment if the Django service needs to publish its static files; the API itself does not serve the Vite frontend.
+For production, set `DJANGO_DEBUG=0`, a secure `DJANGO_SECRET_KEY`, explicit allowed hosts and the exact frontend origin in `SPOTTER_CORS_ALLOWED_ORIGINS`. The health check is `GET /api/health` and returns `{"status":"ok"}`.
 
-Before hosting, set `DJANGO_DEBUG=0`, a real `DJANGO_SECRET_KEY`, explicit `DJANGO_ALLOWED_HOSTS`, `SPOTTER_CORS_ALLOWED_ORIGINS` for the exact frontend origin, and confirm the proxy forwards `X-Forwarded-Proto: https`. Set HSTS only after HTTPS is confirmed end-to-end. Keep HERE disabled unless live routing is intentionally approved and configured.
+SQLite is sufficient for the stateless assessment service, but ephemeral hosting can reset it. Use a managed database only if persistent application data is added later.
 
-## Known limitations and readiness gaps
+## Known limitations
 
-- Demo mode supports only Denver, CO → Kansas City, MO and uses saved route/weather fixtures.
-- Live HERE routing is implemented behind configuration but has not been called or externally verified.
-- SQLite remains configured because the demo API does not persist application data; ephemeral hosting may reset the database and multi-instance production deployments should use a managed database if persistence is later added.
-- Django has no authentication; this is appropriate for the assessment demo but not a complete production service.
-- Browser E2E/Playwright coverage is not configured. MapLibre rendering, mobile sheet gestures, deployed CORS, tile availability, and hosted frontend/API connectivity require manual or deployment-level verification.
-- The build reports normal Browserslist freshness and bundle-size warnings; these do not block the build.
+- Valhalla and Photon are external public services and may be rate-limited or unavailable.
+- Simulated weather is for assessment demonstration, not operational dispatch decisions.
+- MapLibre tiles and hosted frontend/API connectivity require deployment-level verification.
 
-## Submission links
+## Links
 
-- Hosted application: **to be added after deployment**
-- Loom walkthrough (5–10 minutes): **to be added after recording**
-
-See `docs/API_CONTRACT.md` for the request/response schema and authoritative implementation interpretations.
+- Hosted application: to be added
+- Loom walkthrough: to be added

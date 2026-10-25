@@ -1,24 +1,35 @@
 # Spotter Guard backend
 
-This is the Django REST Framework foundation for the Spotter Guard route-planning API.
+Django REST Framework API for Photon geocoding, Valhalla truck routing, checkpoint generation, simulated weather and route-risk analysis.
 
-The backend includes an offline Denver provider, an opt-in Valhalla truck-routing adapter, and separately gated HERE/Open-Meteo adapters. In safe demo mode, `POST /api/routes/plan` returns saved route and weather fixtures. Set `SPOTTER_ROUTING_PROVIDER=valhalla` to route the Dallas–Los Angeles and Seattle–Portland journeys through the configured Valhalla endpoint; valid responses are passed through the same checkpoint, weather and risk pipeline.
+Maintained by [John Tasie](https://tasie.vercel.app) (`tasiejohn777@gmail.com`).
 
 ## Local setup
 
 ```sh
 cd backend
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 python manage.py test
 python manage.py runserver
 ```
 
-Set `SPOTTER_CORS_ALLOWED_ORIGINS` to a comma-separated list of frontend origins when needed. The default allows the local Vite development origin.
+The current Valhalla configuration uses `SPOTTER_ROUTING_PROVIDER=valhalla` and `SPOTTER_ROUTE_MODE=live`. The checked-in environment example is safe for offline development; set those values when running the Valhalla-backed application. Set `VALHALLA_BASE_URL`, `VALHALLA_CLIENT_ID` and `PHOTON_BASE_URL` as needed. Routing and geocoding are performed only by Django; the frontend never receives provider credentials.
 
-The safe defaults are `SPOTTER_ROUTE_MODE=demo`, `SPOTTER_ROUTING_PROVIDER=demo` and `HERE_LIVE_ENABLED=false`. Demo mode supports Denver, CO to Kansas City, MO. Valhalla mode uses `VALHALLA_BASE_URL` and `VALHALLA_CLIENT_ID`, does not require a HERE key, and should respect the public service's fair-use limits. Open-Meteo is only selected in deliberate live mode; HERE remains disabled unless explicitly enabled by an operator. Do not commit `.env` or API keys.
+Weather is deterministic simulated data. The service generates checkpoints at 10, 25 or 50 miles, estimates checkpoint arrival times from route geometry and duration, evaluates the assessment risk rules, and ranks routes by Severe miles, High miles, average risk and duration.
 
-For production, set `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, and `SPOTTER_CORS_ALLOWED_ORIGINS`. Start the WSGI application with `gunicorn config.wsgi:application`. The unauthenticated health check is `GET /api/health` and returns `{"status":"ok"}`. Set `DJANGO_SECURE_SSL_REDIRECT=1` only when the hosting proxy terminates HTTPS and forwards `X-Forwarded-Proto`.
+Keep `HERE_LIVE_ENABLED=false`. HERE is not used by normal application requests. Do not commit `.env` files or credentials.
 
-Threshold assumptions and unresolved source requirements are documented in `spotter/risk.py` and `../docs/API_CONTRACT.md`.
+## Production
+
+Set `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` and `SPOTTER_CORS_ALLOWED_ORIGINS`. Start the WSGI app with:
+
+```sh
+gunicorn config.wsgi:application
+```
+
+The unauthenticated health endpoint is `GET /api/health` and returns `{"status":"ok"}`. Set `DJANGO_SECURE_SSL_REDIRECT=1` only when the hosting proxy terminates HTTPS and forwards `X-Forwarded-Proto`.
+
+See `../docs/API_CONTRACT.md` for the API schema and authoritative risk interpretations.
