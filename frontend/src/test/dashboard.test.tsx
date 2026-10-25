@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RoutePlanRequest, RoutePlanResponse } from '@/types';
@@ -15,8 +15,17 @@ const route = (interval: number): RoutePlanResponse => ({
 
 const chooseInterval = async (user: ReturnType<typeof userEvent.setup>, value: '10' | '25' | '50') => user.click(screen.getAllByRole('button', { name: new RegExp(`^${value} mi$`) })[0]);
 const analyzeButton = () => screen.getAllByRole('button', { name: /^Analyze routes$/ })[0];
+const fillValidJourney = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.selectOptions(screen.getByLabelText('Starting State'), 'GA');
+  await user.type(screen.getByLabelText('Starting City'), 'Atlanta');
+  await user.selectOptions(screen.getByLabelText('Destination State'), 'TN');
+  await user.type(screen.getByLabelText('Destination City'), 'Memphis');
+  fireEvent.change(screen.getByLabelText(/Departure date/i), { target: { value: '2099-01-01' } });
+  await user.type(screen.getByLabelText(/Departure time/i), '12:00');
+  await user.type(screen.getByLabelText(/Load weight/i), '42000');
+};
 
-afterEach(() => { vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Analyze Routes workflow', () => {
   it('shows pending feedback, prevents duplicates, and renders fresh results', async () => {
@@ -24,6 +33,7 @@ describe('Analyze Routes workflow', () => {
     let resolveRequest!: (response: RoutePlanResponse) => void;
     planRoutes.mockReturnValueOnce(new Promise((resolve) => { resolveRequest = resolve; }));
     render(<App />);
+    await fillValidJourney(user);
     const analyze = screen.getByRole('button', { name: /^Analyze routes$/ });
     await user.click(analyze);
     expect(screen.getByRole('button', { name: /Analyzing routes/i })).toBeDisabled();
@@ -39,6 +49,7 @@ describe('Analyze Routes workflow', () => {
     const user = userEvent.setup();
     planRoutes.mockImplementation(async (request) => route(request.checkpoint_interval_miles));
     render(<App />);
+    await fillValidJourney(user);
     for (const interval of ['10', '25', '50', '10'] as const) {
       await chooseInterval(user, interval);
       await user.click(analyzeButton());
@@ -52,7 +63,9 @@ describe('Analyze Routes workflow', () => {
   it('shows a visible expired-departure error without making a request', async () => {
     const user = userEvent.setup();
     render(<App />);
-    fireEvent.change(screen.getAllByLabelText(/Departure date/i)[0], { target: { value: '2020-01-01T00:00' } });
+    await fillValidJourney(user);
+    fireEvent.change(screen.getAllByLabelText(/Departure date/i)[0], { target: { value: '2020-01-01' } });
+    await user.type(screen.getAllByLabelText(/Departure time/i)[0], '00:00');
     await user.click(analyzeButton());
     expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent(/future/i);
     expect(planRoutes).not.toHaveBeenCalled();
@@ -62,7 +75,7 @@ describe('Analyze Routes workflow', () => {
     const user = userEvent.setup();
     planRoutes.mockRejectedValueOnce(new Error('Unable to reach the route-planning service.')).mockResolvedValueOnce(route(25));
     render(<App />);
-    fireEvent.change(screen.getAllByLabelText(/Departure date/i)[0], { target: { value: '2099-01-01T12:00' } });
+    await fillValidJourney(user);
     await user.click(analyzeButton());
     expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent(/Unable to reach/i);
     await user.click(analyzeButton());
