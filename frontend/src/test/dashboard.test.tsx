@@ -15,13 +15,21 @@ const route = (interval: number): RoutePlanResponse => ({
 
 const chooseInterval = async (user: ReturnType<typeof userEvent.setup>, value: '10' | '25' | '50') => user.click(screen.getAllByRole('button', { name: new RegExp(`^${value} mi$`) })[0]);
 const analyzeButton = () => screen.getAllByRole('button', { name: /^Analyze routes$/ })[0];
+const setNativeInputValue = (input: HTMLInputElement, value: string) => {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  fireEvent.input(input, { target: { value } });
+  fireEvent.change(input, { target: { value } });
+};
 const fillValidJourney = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.selectOptions(screen.getByLabelText('Starting State'), 'GA');
   await user.type(screen.getByLabelText('Starting City'), 'Atlanta');
   await user.selectOptions(screen.getByLabelText('Destination State'), 'TN');
   await user.type(screen.getByLabelText('Destination City'), 'Memphis');
-  fireEvent.change(screen.getByLabelText(/Departure date/i), { target: { value: '2099-01-01' } });
-  await user.type(screen.getByLabelText(/Departure time/i), '12:00');
+  setNativeInputValue(screen.getByLabelText(/Departure date/i), '2099-01-01');
+  await waitFor(() => expect(screen.getByLabelText(/Departure date/i)).toHaveValue('2099-01-01'));
+  setNativeInputValue(screen.getByLabelText(/Departure time/i), '12:00');
+  await waitFor(() => expect(screen.getByLabelText(/Departure time/i)).toHaveValue('12:00'));
   await user.type(screen.getByLabelText(/Load weight/i), '42000');
 };
 
@@ -64,8 +72,10 @@ describe('Analyze Routes workflow', () => {
     const user = userEvent.setup();
     render(<App />);
     await fillValidJourney(user);
-    fireEvent.change(screen.getAllByLabelText(/Departure date/i)[0], { target: { value: '2020-01-01' } });
-    await user.type(screen.getAllByLabelText(/Departure time/i)[0], '00:00');
+    setNativeInputValue(screen.getAllByLabelText(/Departure date/i)[0], '2020-01-01');
+    await waitFor(() => expect(screen.getAllByLabelText(/Departure date/i)[0]).toHaveValue('2020-01-01'));
+    setNativeInputValue(screen.getAllByLabelText(/Departure time/i)[0], '00:00');
+    await waitFor(() => expect(screen.getAllByLabelText(/Departure time/i)[0]).toHaveValue('00:00'));
     await user.click(analyzeButton());
     expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent(/future/i);
     expect(planRoutes).not.toHaveBeenCalled();

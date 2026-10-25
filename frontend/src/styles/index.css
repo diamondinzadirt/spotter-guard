@@ -39,6 +39,7 @@ button:disabled { cursor: wait; opacity: .7; }
 .planner-helper { margin: 6px 0 0; color: #7b867f; font-size: 11px; line-height: 1.4; }
 .planner label { display: block; min-width: 0; margin: 0 0 14px; }
 .planner input, .planner select { display: block; box-sizing: border-box; width: 100%; min-width: 0; height: 36px; margin-top: 7px; padding: 0 10px; border: 1px solid #dedbd4; border-radius: 7px; outline: none; color: #18231e; background: #f6f5f1; font-family: 'DM Mono', monospace; font-size: 12px; }
+.planner input[type='date'], .planner input[type='time'] { cursor: pointer; color-scheme: light; }
 .planner input:focus { border-color: #176b49; box-shadow: 0 0 0 3px #176b4918; }
 .planner select:focus { border-color: #176b49; box-shadow: 0 0 0 3px #176b4918; }
 .unit { float: right; color: #a1aaa4; font-size: 9px; }
