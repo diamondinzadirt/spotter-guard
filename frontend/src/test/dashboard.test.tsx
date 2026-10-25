@@ -72,9 +72,9 @@ describe('Analyze Routes workflow', () => {
     const user = userEvent.setup();
     render(<App />);
     await fillValidJourney(user);
-    setNativeInputValue(screen.getAllByLabelText(/Departure date/i)[0], '2020-01-01');
+    setNativeInputValue(screen.getAllByLabelText(/Departure date/i)[0] as HTMLInputElement, '2020-01-01');
     await waitFor(() => expect(screen.getAllByLabelText(/Departure date/i)[0]).toHaveValue('2020-01-01'));
-    setNativeInputValue(screen.getAllByLabelText(/Departure time/i)[0], '00:00');
+    setNativeInputValue(screen.getAllByLabelText(/Departure time/i)[0] as HTMLInputElement, '00:00');
     await waitFor(() => expect(screen.getAllByLabelText(/Departure time/i)[0]).toHaveValue('00:00'));
     await user.click(analyzeButton());
     expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent(/future/i);

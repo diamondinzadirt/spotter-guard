@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { Dispatch, PointerEvent as ReactPointerEvent, SetStateAction } from 'react';
 import { Activity, ArrowRight, BarChart3, CloudRain, Gauge, LoaderCircle, Navigation, Radio, Route, Send, ShieldCheck, Snowflake, Truck, Wind } from 'lucide-react';
 import type { Checkpoint, RiskLevel, RouteOption, RoutePlanRequest, RoutePlanResponse, WeatherMetric } from '@/types';
 import { planRoutes } from '@/services/mockApi';
@@ -32,13 +32,19 @@ function RiskBadge({ risk, compact = false }: { risk: RiskLevel; compact?: boole
   return <span className={`risk-badge ${compact ? 'compact' : ''}`} style={{ color: meta.color, backgroundColor: meta.bg, borderColor: `${meta.color}40` }}><i style={{ backgroundColor: meta.color }} />{meta.label}</span>;
 }
 
-function Planner({ request, setRequest, onAnalyze, loading }: { request: RoutePlanRequest; setRequest: (request: RoutePlanRequest) => void; onAnalyze: () => void; loading: boolean }) {
+function Planner({ request, setRequest, onAnalyze, loading }: { request: RoutePlanRequest; setRequest: Dispatch<SetStateAction<RoutePlanRequest>>; onAnalyze: () => void; loading: boolean }) {
   const initialOrigin = splitLocation(request.origin); const initialDestination = splitLocation(request.destination);
   const [originState, setOriginState] = useState(initialOrigin.state); const [originCity, setOriginCity] = useState(initialOrigin.city);
   const [destinationState, setDestinationState] = useState(initialDestination.state); const [destinationCity, setDestinationCity] = useState(initialDestination.city);
   const updateLocation = (field: 'origin' | 'destination', city: string, state: string) => setRequest({ ...request, [field]: city && state ? `${city}, ${state}` : '' });
   const originCities = CITIES_BY_STATE[originState] ?? []; const destinationCities = CITIES_BY_STATE[destinationState] ?? [];
-  const [departureDate = '', departureTime = ''] = request.departure_time.split('T');
+  const [requestDate = '', requestTime = ''] = request.departure_time.split('T');
+  const [departureDate, setDepartureDate] = useState(requestDate);
+  const [departureTime, setDepartureTime] = useState(requestTime);
+  useEffect(() => {
+    const departure_time = departureDate && departureTime ? `${departureDate}T${departureTime}` : '';
+    if (request.departure_time !== departure_time) setRequest((current) => ({ ...current, departure_time }));
+  }, [departureDate, departureTime, request.departure_time, setRequest]);
   const updateDeparture = (date?: string, time?: string) => setRequest((current) => {
     const [currentDate = '', currentTime = ''] = current.departure_time.split('T');
     const nextDate = date ?? currentDate;
@@ -48,7 +54,7 @@ function Planner({ request, setRequest, onAnalyze, loading }: { request: RoutePl
   return <section className="planner panel">
     <div className="panel-title"><div><h2>Enter Your Trip Details</h2><p className="planner-helper">Choose your route, departure time and load weight.</p></div><Truck size={19} /></div>
     <div className="location-fields"><div><label>Starting State<select value={originState} onChange={(event) => { const state = event.target.value; setOriginState(state); setOriginCity(''); updateLocation('origin', '', state); }}><option value="">Select starting state</option>{US_STATES.map(([code, name]) => <option key={code} value={code}>{name} ({code})</option>)}</select></label><label>Starting City<input list="origin-city-options" value={originCity} disabled={!originState} placeholder="Enter starting city" onChange={(event) => { const city = event.target.value; setOriginCity(city); updateLocation('origin', city, originState); }} /></label><datalist id="origin-city-options">{originCities.map((city) => <option key={city} value={city} />)}</datalist></div><div><label>Destination State<select value={destinationState} onChange={(event) => { const state = event.target.value; setDestinationState(state); setDestinationCity(''); updateLocation('destination', '', state); }}><option value="">Select destination state</option>{US_STATES.map(([code, name]) => <option key={code} value={code}>{name} ({code})</option>)}</select></label><label>Destination City<input list="destination-city-options" value={destinationCity} disabled={!destinationState} placeholder="Enter destination city" onChange={(event) => { const city = event.target.value; setDestinationCity(city); updateLocation('destination', city, destinationState); }} /></label><datalist id="destination-city-options">{destinationCities.map((city) => <option key={city} value={city} />)}</datalist></div></div>
-    <div className="departure-fields"><label>Departure date<input type="date" value={departureDate} min={toLocalDateTimeValue(new Date()).slice(0, 10)} onChange={(event) => updateDeparture(event.target.value)} /></label><label>Departure time <span className="unit">24-hour / HH:mm</span><input type="time" step="60" value={departureTime} onChange={(event) => updateDeparture(undefined, event.target.value)} /></label></div>
+    <div className="departure-fields"><label>Departure date<input type="date" value={departureDate} min={toLocalDateTimeValue(new Date()).slice(0, 10)} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => setDepartureDate(event.currentTarget.value)} /></label><label>Departure time<input type="time" step="60" value={departureTime} onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => setDepartureTime(event.currentTarget.value)} /></label></div>
     <label>Load weight <span className="unit">LB</span><input type="number" min="0" placeholder="Enter load weight (lbs)" value={request.load_weight_lb || ''} onChange={(event) => setRequest({ ...request, load_weight_lb: Number(event.target.value) })} /></label>
     <div className="field-label">Checkpoint interval <span className="unit">MILES</span></div>
     <div className="segmented">{([10, 25, 50] as const).map((value) => <button key={value} className={request.checkpoint_interval_miles === value ? 'active' : ''} onClick={() => setRequest({ ...request, checkpoint_interval_miles: value })}>{value} <span>mi</span></button>)}</div>
